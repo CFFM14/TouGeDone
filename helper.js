@@ -399,7 +399,6 @@
   }
   $('start').onclick = async () => {
     if (running) return;
-    if(globalThis.__ehUpdating){status('插件正在更新，请稍后刷新页面。');return;}
     let submitted = false, confirmedMasks = null, bestMasks = null, bestScore = null, passed = false;
     const pageUrl = location.href;
     try {

@@ -23,9 +23,9 @@ def make_descriptor(release, tag):
         descriptor['assets'][-1]['browser_download_url'] = (
             'https://github.com/CFFM14/TouGeDone/releases/download/'
             + quote(tag, safe='') + '/' + quote(asset['name'], safe=''))
-    bundle_asset = next(a for a in descriptor['assets'] if a['name'] == f'TouGeDone-{tag}.bundle.json')
-    if not re.fullmatch(r'sha256:[a-f0-9]{64}', str(bundle_asset['digest'])):
-        raise RuntimeError('一键更新包缺少 GitHub SHA-256，未发布备用信息。')
+    zip_asset = next(a for a in descriptor['assets'] if a['name'] == f'TouGeDone-{tag}.zip')
+    if not re.fullmatch(r'sha256:[a-f0-9]{64}', str(zip_asset['digest'])):
+        raise RuntimeError('ZIP 安装包缺少 GitHub SHA-256，未发布备用信息。')
     return descriptor
 
 def git(*args, input=None):
@@ -71,12 +71,12 @@ def main():
             raise RuntimeError(f'GitHub 授权或读取失败（HTTP {error.code}）。') from None
         body = {'tag_name': tag, 'target_commitish': commit,
                 'name': '天下人苦头歌久矣 ' + label, 'draft': True, 'prerelease': False,
-                'body': f'{label}。\n\n下载 `{package.name}`，解压覆盖原加载目录，在 Edge 扩展页重新加载，再刷新答题页。\n\n完整变化见仓库《版本更新记录.md》。2.9.1 起可在设置中授权原插件目录，之后点击“一键更新”。首次升级旧版仍需手动覆盖一次。'}
+                'body': f'{label}。\n\n下载 `{package.name}`，解压覆盖原加载目录，在 Edge 扩展页重新加载，再刷新答题页。\n\n完整变化见仓库《版本更新记录.md》。2.9.6 已移除目录授权、自动覆盖和回滚模块，仅提供检查和下载 ZIP。旧版被隔离的文件请保持隔离，不恢复、不添加防护排除。'}
         release = request(API + '/releases', json.dumps(body, ensure_ascii=False).encode(), method='POST')
     if release.get('target_commitish') not in (commit, 'main'):
         raise RuntimeError('已有同名发布指向其他提交，未覆盖。')
     existing = {asset['name'] for asset in release.get('assets', [])}
-    for file in (package, checksum, package.parent / f'TouGeDone-v{version}.bundle.json'):
+    for file in (package, checksum):
         if file.name in existing:
             print(f'已存在 {file.name}，保留原附件。')
             continue

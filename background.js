@@ -66,16 +66,6 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if(message.type==='eh-update-options'&&fromTask){
     chrome.storage.session.set({'eh-options-source':sender.tab.id,'eh-update-autocheck':true}).then(()=>chrome.runtime.openOptionsPage()).catch(console.error);return;
   }
-  if(fromSettings&&['eh-update-prepare','eh-update-finish'].includes(message.type)){
-    (async()=>{
-      const tabs=(await chrome.tabs.query({})).filter(t=>supportedPage(t.url));
-      const results=await Promise.allSettled(tabs.map(async tab=>{
-        const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:busy=>{if(busy&&globalThis.__ehController?.running)return false;globalThis.__ehUpdating=busy;return true;},args:[message.type==='eh-update-prepare']});
-        if(results.some(r=>r.result!==true))throw Error('请先停止所有答题页的运行任务，再更新插件。');
-      }));
-      if(message.type==='eh-update-prepare'){const failed=results.find(r=>r.status==='rejected');if(failed)throw failed.reason;}
-    })().then(()=>reply({ok:true}),error=>reply({ok:false,error:error.message}));return true;
-  }
   if(fromSettings&&['eh-update-check','eh-update-download'].includes(message.type)){
     (async()=>{const result=await checkRelease();
       if(message.type==='eh-update-download'){

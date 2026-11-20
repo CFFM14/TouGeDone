@@ -13,8 +13,7 @@ for(const field of ['draft','prerelease']){const data=release('2.10.0');data[fie
 for(const url of ['https://evil.example/extension.zip','http://github.com/CFFM14/TouGeDone/releases/download/v2.10.0/TouGeDone-v2.10.0.zip','https://github.com/Other/Repo/releases/download/v2.10.0/TouGeDone-v2.10.0.zip']){const data=release('2.10.0');data.assets[0].browser_download_url=url;await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(data)}),/地址/);}
 const missing=release('2.10.0');missing.assets=[];await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(missing)}),/安装包/);
 const bundled=release('2.9.1');bundled.assets.push({name:'TouGeDone-v2.9.1.bundle.json',state:'uploaded',digest:'sha256:'+'a'.repeat(64),browser_download_url:'https://github.com/CFFM14/TouGeDone/releases/download/v2.9.1/TouGeDone-v2.9.1.bundle.json'});
-assert.equal((await U.check('2.9.0',{fetchImpl:fetchRelease(bundled)})).bundle.digest,'a'.repeat(64));
-for(const mutate of [a=>a.digest=null,a=>a.browser_download_url='https://evil.example/bundle.json']){const bad=structuredClone(bundled);mutate(bad.assets[1]);await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(bad)}),/校验/);}
+const legacy=await U.check('2.9.0',{fetchImpl:fetchRelease(bundled)});assert.equal('bundle' in legacy,false);assert.equal(legacy.name,'TouGeDone-v2.9.1.zip');
 const descriptor={...bundled,format:1,repository:'CFFM14/TouGeDone'};
 const fallbackResponse=(data,url='https://release-assets.githubusercontent.com/test')=>({ok:true,status:200,url,body:new Response(typeof data==='string'?data:JSON.stringify(data)).body});
 for(const status of [403,429,500,'network']){
@@ -24,7 +23,7 @@ for(const status of [403,429,500,'network']){
     if(url===U.api){if(status==='network')throw Error('network');return {status,ok:false};}
     assert.equal(url,U.fallback);assert.equal(request.redirect,'follow');return fallbackResponse(descriptor);
   }});
-  assert.equal(result.source,'fallback');assert.equal(result.state,'available');assert.equal(result.latest,'2.9.1');assert.equal(result.bundle.digest,'a'.repeat(64));assert.equal(calls.length,2);
+  assert.equal(result.source,'fallback');assert.equal(result.state,'available');assert.equal(result.latest,'2.9.1');assert.equal('bundle' in result,false);assert.equal(calls.length,2);
 }
 const backupFetch=data=>async url=>url===U.api?{status:403,ok:false}:fallbackResponse(data);
 assert.equal((await U.check('2.9.1',{fetchImpl:backupFetch(descriptor)})).state,'current');

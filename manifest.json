@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "天下人苦头歌久矣",
-  "version": "2.9.5",
+  "version": "2.9.6",
   "description": "单选逐题尝试，多选清洗锁定后3/4题并行、差量切换与命中拆分；支持Flash编程自动评测。",
   "permissions": [
     "activeTab",
@@ -70,5 +70,5 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "version_name": "2.9.5 AI输出容错修复版"
+  "version_name": "2.9.6 移除自动覆盖更新"
 }
