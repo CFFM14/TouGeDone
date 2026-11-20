@@ -1,13 +1,28 @@
 (() => {
   const boot = globalThis.__ehBootstrap === true;
   delete globalThis.__ehBootstrap;
-  const chainKey = 'educoder-helper-next-v1';
+  const chainKey = 'educoder-helper-next-v1', panelKey = 'educoder-helper-panel-v1';
   const canonical = value => { const url = new URL(value, location.href); url.hash = ''; return url.href; };
-  let resume = null;
-  try { resume = JSON.parse(sessionStorage.getItem(chainKey) || 'null'); } catch {}
-  if (boot && (!resume || resume.next !== canonical(location.href) || !Array.isArray(resume.visited) || !Number.isFinite(resume.at) || Date.now() - resume.at > 120000)) return;
-  if (boot) sessionStorage.removeItem(chainKey);
+  const sameTask = (left, right) => {
+    try {
+      const a = new URL(left), b = new URL(right);
+      const ap = a.pathname.split('/').filter(Boolean), bp = b.pathname.split('/').filter(Boolean);
+      if (a.origin !== b.origin || ap[0] !== 'tasks' || bp[0] !== 'tasks' || ap.at(-1) !== bp.at(-1)) return false;
+      if (ap.length > 2 && bp.length > 2 && ap.slice(0,-1).join('/') !== bp.slice(0,-1).join('/')) return false;
+      const ac = a.searchParams.get('coursesId'), bc = b.searchParams.get('coursesId');
+      return !ac || !bc || ac === bc;
+    } catch { return false; }
+  };
+  let resume = null, sticky = null;
+  try { resume = JSON.parse(sessionStorage.getItem(chainKey) || 'null'); sticky = JSON.parse(sessionStorage.getItem(panelKey) || 'null'); } catch {}
+  const validResume = resume && sameTask(resume.next, location.href) && Array.isArray(resume.visited) && Number.isFinite(resume.at) && Date.now() - resume.at >= 0 && Date.now() - resume.at <= 120000;
+  if (!validResume) resume = null;
+  const controller = globalThis.__ehController;
+  if (controller && !sameTask(controller.url, location.href)) controller.dispose();
   if (document.getElementById('edu-helper-panel')) return;
+  if (boot && !resume && !sticky && !globalThis.__ehRestorePanel) return;
+  delete globalThis.__ehRestorePanel;
+  if (resume) sessionStorage.removeItem(chainKey);
   if (!boot) resume = null;
   const supportedHosts = new Set(['www.educoder.net', 'educoder.net', 'trustie.educoder.net']);
   if (!supportedHosts.has(location.hostname) || !location.pathname.startsWith('/tasks/')) return alert('请在头歌答题界面打开助手。当前页面：' + location.hostname + location.pathname);
@@ -15,8 +30,8 @@
   const panel = document.createElement('div');
   panel.id = 'edu-helper-panel';
   panel.style.cssText = 'position:fixed;z-index:2147483647;right:20px;top:60px;width:380px;max-height:82vh;overflow:auto;box-sizing:border-box;padding:16px;background:white;color:#172033;border:2px solid #1677ff;border-radius:12px;font:14px/1.6 sans-serif;box-shadow:0 4px 20px #0005';
-  panel.innerHTML = `<b>头歌整关助手 · 2.1.0</b><button id="eh-close" style="float:right">关闭</button>
-    <p>识别当前关卡的单选和多选题，逐题尝试并保留最佳提交。</p>
+  panel.innerHTML = `<b>头歌整关助手 · 2.2.0</b><button id="eh-close" style="float:right">关闭</button>
+    <p><label>工作模式 <select id="eh-mode"><option value="choice">选择题助手</option><option value="code">编程题助手</option><option value="mixed">混合模式</option></select></label></p><p id="eh-mode-help"></p>
     <button id="eh-scan">重新识别题目</button> <span id="eh-count"></span>
     <div id="eh-questions" style="margin:10px 0"></div>
     <label>范围 <select id="eh-scope"><option value="all">当前整关</option><option value="one">指定一道题</option></select></label>
@@ -24,9 +39,16 @@
     <p><label>最小提交间隔（秒） <input id="eh-delay" type="number" min="1" max="60" value="1" style="width:55px"></label></p>
     <p style="font-size:12px;color:#586174">开始后会真实提交。整关模式会为未作答题临时选择首项；一次只改一道题，等待本次结果后才继续。停止时会核查当前结果，必要时恢复并提交最佳答案。</p>
     <p><label><input id="eh-auto" type="checkbox" checked> 通过后自动下一关；无选择题时跳过</label></p><p style="font-size:12px">多选顺序：全选 → 少选一项 → 少选两项 → … → 单项。</p>
+    <details id="eh-ai-section" style="margin:10px 0"><summary>编程题 · DeepSeek</summary><button id="eh-ai-settings">AI 设置</button> <button id="eh-ai-run">AI 生成并写入</button> <button id="eh-ai-undo" disabled>恢复原代码</button><p style="font-size:12px">会把题干与当前文件代码发送给 DeepSeek。仅处理当前文件，写入后由你检查并点击评测。</p><textarea id="eh-ai-preview" readonly placeholder="生成代码预览" style="width:100%;height:130px;box-sizing:border-box"></textarea></details>
     <button id="eh-start">开始整关</button> <button id="eh-stop" disabled>停止并保留最佳</button>
     <p id="eh-status" role="status" aria-live="polite">等待识别。</p>`;
   document.body.appendChild(panel);
+  const notify = type => {
+    try { globalThis.chrome?.runtime?.sendMessage({type}).catch(() => {}); } catch {}
+  };
+  const rememberPanel = () => { try { sessionStorage.setItem(panelKey, JSON.stringify({open:true})); } catch {} };
+  rememberPanel(); notify('eh-panel-open');
+  globalThis.__ehController = {url:location.href, dispose() { stopped = true; chainActive = false; notify('eh-ai-cancel'); panel.remove(); }};
   const $ = id => panel.querySelector('#eh-' + id);
   const status = text => { $('status').textContent = text; };
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -70,12 +92,20 @@
     } catch (error) { groups = []; $('questions').replaceChildren(); $('count').textContent = '未识别'; status(error.message); }
   }
   $('scan').onclick = scan;
-  $('scope').onchange = () => { $('question').disabled = $('scope').value === 'all'; $('start').textContent = $('scope').value === 'all' ? '开始整关' : '开始本题'; };
-  $('stop').onclick = () => { stopped = true; chainActive = false; sessionStorage.removeItem(chainKey); status('正在停止：等待当前结果，必要时恢复并提交最佳答案，不再尝试新组合。'); };
-  $('close').onclick = () => { if (running) return $('stop').click(); sessionStorage.removeItem(chainKey); panel.remove(); };
+  function updateMode() {
+    const mode=$('mode').value;
+    $('ai-section').hidden=mode==='choice';
+    $('mode-help').textContent=mode==='choice'?'自动完成单选和多选，跨关时跳过编程题。':mode==='code'?'遇到选择题跳过，编程题由 DeepSeek 生成并写入当前文件，然后停下供你检查和评测。':'选择题自动尝试；编程题由 DeepSeek 生成并写入，然后停下供你检查和评测。';
+    $('start').textContent=mode==='code'?'开始编程题助手':mode==='mixed'?'开始混合模式':$('scope').value==='all'?'开始整关':'开始本题';
+    $('question').disabled=$('scope').value==='all';
+  }
+  $('scope').onchange=updateMode;
+  $('mode').onchange=updateMode;
+  $('stop').onclick = () => { globalThis.chrome?.runtime?.sendMessage({type:'eh-ai-cancel'}).catch(()=>{}); stopped = true; chainActive = false; sessionStorage.removeItem(chainKey); status('正在停止：等待当前结果，必要时恢复并提交最佳答案，不再尝试新组合。'); };
+  $('close').onclick = () => { if (running) return $('stop').click(); sessionStorage.removeItem(chainKey); sessionStorage.removeItem(panelKey); notify('eh-panel-close'); panel.remove(); };
   const lock = value => {
     running = value;
-    for (const id of ['scan','scope','question','delay','start','auto']) $(id).disabled = value;
+    for (const id of ['scan','scope','question','delay','start','auto','ai-run','mode']) $(id).disabled = value;
     if (!value) $('question').disabled = $('scope').value === 'all';
     $('stop').disabled = !value;
   };
@@ -108,6 +138,42 @@
     const el = buttons[0];
     if (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.classList.contains('ant-btn-loading')) throw Error('评测按钮暂不可用。');
     return el;
+  };
+  let aiUndo = null;
+  const editorRequest = (op, data = {}) => new Promise((resolve,reject) => {
+    const id=crypto.randomUUID();
+    const cleanup=()=>{clearTimeout(timer);document.removeEventListener('eh-editor-result',receive);};
+    const receive=event=>{let reply;try{reply=JSON.parse(event.detail);}catch{return;}if(reply.id!==id)return;cleanup();reply.ok?resolve(reply):reject(Error(reply.error));};
+    const timer=setTimeout(()=>{cleanup();reject(Error('编辑器连接超时，请重新加载扩展并刷新页面。'));},10000);
+    document.addEventListener('eh-editor-result',receive);
+    document.dispatchEvent(new CustomEvent('eh-editor-request',{detail:JSON.stringify({id,op,url:location.href,...data})}));
+  });
+  $('ai-settings').onclick=()=>globalThis.chrome?.runtime?.sendMessage({type:'eh-ai-settings'});
+  async function generateCode() {
+    const page=location.href;
+    if([...document.querySelectorAll('div.option input')].some(el=>el.getClientRects().length))throw Error('当前是选择题，请使用整关模式。');
+    const learning=[...document.querySelectorAll('a')].find(el=>el.getClientRects().length&&el.innerText.trim()==='学习内容');
+    learning?.click();await sleep(300);
+    const task=[...document.querySelectorAll('.markdown-body,.task-pass')].filter(el=>!panel.contains(el)&&el.getClientRects().length).map(el=>el.innerText).filter(Boolean).join('\n\n');
+    if(!task.trim())throw Error('未读取到编程题题干，请打开学习内容后重试。');
+    const original=await editorRequest('read');
+    if(stopped||location.href!==page)throw Error('任务已停止或关卡已变化。');
+    status('DeepSeek 正在生成当前文件代码…');
+    const result=await chrome.runtime.sendMessage({type:'eh-ai-generate',input:{task,code:original.code,file:original.file,language:original.language}});
+    if(!result?.ok)throw Error(result?.error||'DeepSeek 请求失败。');
+    $('ai-preview').value=result.code;
+    if(stopped||location.href!==page)throw Error('已停止或关卡已变化，代码仅保留预览，未写入。');
+    await editorRequest('write',{file:original.file,expected:original.code,code:result.code});
+    aiUndo={url:page,file:original.file,code:original.code,written:result.code};$('ai-undo').disabled=false;
+    status('AI 代码已写入当前文件，未提交评测。请检查后手动评测。'+(result.explanation?' '+result.explanation:''));
+  }
+  $('ai-run').onclick=async()=>{
+    if(running)return;stopped=false;chainActive=false;lock(true);
+    try{await generateCode();}catch(error){status('AI：'+error.message);}finally{lock(false);}
+  };
+  $('ai-undo').onclick=async()=>{
+    if(running||!aiUndo)return;
+    try{if(location.href!==aiUndo.url)throw Error('关卡已变化，不能恢复。');await editorRequest('write',{file:aiUndo.file,expected:aiUndo.written,code:aiUndo.code});aiUndo=null;$('ai-undo').disabled=true;status('已恢复原代码，未提交。');}catch(error){status(error.message);}
   };
   async function waitForLevel() {
     const started = Date.now();
@@ -142,7 +208,7 @@
     if (next.origin !== location.origin || !next.pathname.startsWith(prefix) || !next.pathname.startsWith('/tasks/')) throw Error('下一关链接超出当前任务范围，已停止。');
     const target = canonical(next.href);
     if (visited.includes(target)) throw Error('下一关指向已访问关卡，已停止，避免循环。');
-    sessionStorage.setItem(chainKey, JSON.stringify({next:target, visited:[...visited,target], delay:$('delay').value, at:Date.now()}));
+    sessionStorage.setItem(chainKey, JSON.stringify({next:target, visited:[...visited,target], delay:$('delay').value, mode:$('mode').value, at:Date.now()}));
     // Full navigation lets the extension resume in a new isolated world reliably.
     location.assign(target);
   }
@@ -156,8 +222,17 @@
       chainActive = $('scope').value === 'all' && $('auto').checked;
       visited = pendingResume?.visited || [canonical(location.href)];
       lock(true);
-      if (chainActive && !await waitForLevel()) {
-        await goNext('本关未检测到选择题，跳过（未提交评测）');
+      const mode=$('mode').value;
+      const hasChoices=await waitForLevel();
+      if (mode==='code' && hasChoices) {
+        if (chainActive) await goNext('编程题模式：本关是选择题，跳过（未提交）');
+        else status('本关是选择题；编程题模式未作答。');
+        return;
+      }
+      if (!hasChoices) {
+        if (mode==='code' || mode==='mixed') { chainActive=false; await generateCode(); return; }
+        if (chainActive) await goNext('本关未检测到选择题，跳过（未提交评测）');
+        else status('本关未检测到选择题，请切换编程题助手或混合模式。');
         return;
       }
       groups = discover(); render();
@@ -170,7 +245,7 @@
       const capture = () => groups.map(maskOf);
       const same = (a,b) => a && b && a.length === b.length && a.every((value,i) => value === b[i]);
       const check = () => {
-        if (location.href !== pageUrl || inputs.some(el => !el.isConnected)) throw Error('页面或题目已变化，请重新识别。');
+        if (!sameTask(location.href, pageUrl) || inputs.some(el => !el.isConnected)) throw Error('页面或题目已变化，请重新识别。');
         if (inputs.some(el => el.checked !== expected.get(el))) throw Error('检测到手动改动答案，已停止，避免误判结果。');
         const currentInputs = [...document.querySelectorAll('div.option input[type=radio],div.option input[type=checkbox]')];
         if (currentInputs.length !== inputs.length || currentInputs.some(el => !expected.has(el))) throw Error('题目列表已变化，请重新识别。');
@@ -350,7 +425,7 @@
       chainActive = false; sessionStorage.removeItem(chainKey);
       status('停止：' + error.message + (submitted ? ' 最新结果可能尚未确认，请核查记录；未自动重试提交。' : ''));
     } finally {
-      if (submitted && location.href === pageUrl) { try { await refreshRecords(); } catch { /* Preserve the more useful result/error message. */ } }
+      if (submitted && sameTask(location.href, pageUrl)) { try { await refreshRecords(); } catch { /* Preserve the more useful result/error message. */ } }
       lock(false);
       if (passed && chainActive && !stopped) {
         try { await goNext('本关评测通过'); }
@@ -359,8 +434,10 @@
     }
   };
   scan();
+  updateMode();
   if (resume) {
-    $('scope').value = 'all'; $('auto').checked = true;
+    $('scope').value = 'all'; $('auto').checked = true; $('mode').value = ['choice','code','mixed'].includes(resume.mode)?resume.mode:'choice';
+    updateMode();
     $('delay').value = Math.max(1, Math.min(60, Number(resume.delay) || 1));
     setTimeout(() => { if (panel.isConnected && !stopped) $('start').onclick(); }, 0);
   }
