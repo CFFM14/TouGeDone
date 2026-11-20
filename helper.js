@@ -103,6 +103,7 @@
         <p><label>最小提交间隔（秒） <input id="eh-delay" type="number" min="1" max="60" value="1" style="width:55px"></label></p>
         <p style="font-size:12px;color:var(--eh-muted)">单选逐题尝试；多选先清洗锁定，再同时更改3题（最多4题）；命中后拆分定位。多选从多选项到少选项尝试。停止时保留最佳提交。</p>
         <details id="eh-ai-section" style="margin:10px 0"><summary>编程题：生成、恢复与预览</summary>
+          <details style="margin:10px 0"><summary>AI 输出异常与自动补试</summary><p style="font-size:12px">每轮生成遇到下列问题，会反馈原因并最多补试2次，共3次；期间不写入、不评测。补试会产生额外API调用。</p><ul style="font-size:12px;padding-left:20px"><li>JSON格式错误、空响应或输出截断。</li><li>缺少题型、解法、代码、文件列表或修改原因。</li><li>文件路径不合法、重复、未完整读取或只读；代码为空或超限。</li><li>模板区域编号错误、区域重复、标记损坏或改动了固定部分。</li><li>评测已确认失败，却没有提供实际修复。</li></ul><p style="font-size:12px">三次均不合规时显示最后原因并停止。密钥、余额、服务错误，以及停止、跳关、文件变化、保存或评测状态未确认，单独提示处理。</p></details>
           <p><button id="eh-ai-run">仅生成并写入</button> <button id="eh-ai-undo" disabled>恢复原代码</button></p>
           <p style="font-size:12px">日常使用直接点击上方“开始”。本处用于只生成不评测，或恢复最近一次写入。题干、源代码和公开评测反馈会发送给 DeepSeek。</p>
           <p><label>每关 AI 最多轮次 <input id="eh-ai-limit" type="number" min="1" max="30" value="10" style="width:55px"></label></p>
@@ -289,7 +290,15 @@
     status('DeepSeek 正在分析本题、文件调用关系和实现方案…');
     const input={task,code:original.code,file:state.file||original.file,language:original.language,feedback,context};
     $('ai-context').value=JSON.stringify(input,null,2);
-    const result=await chrome.runtime.sendMessage({type:'eh-ai-generate',input});
+    const requestId=crypto.randomUUID();
+    const progress=(message,sender)=>{
+      if(sender.id!==chrome.runtime.id||message.type!=='eh-ai-progress'||message.requestId!==requestId||message.url!==page||location.href!==page||stopped||closed)return;
+      status('AI 返回内容需要纠正，自动重试 '+message.attempt+'/'+message.maxAttempts+'：'+String(message.reason||'').slice(0,800));
+    };
+    globalThis.chrome?.runtime?.onMessage?.addListener(progress);
+    let result;
+    try{result=await chrome.runtime.sendMessage({type:'eh-ai-generate',requestId,input});}
+    finally{globalThis.chrome?.runtime?.onMessage?.removeListener(progress);}
     if(!result?.ok)throw Error(result?.error||'DeepSeek 请求失败。');
     $('ai-preview').value=JSON.stringify({plan:result.plan,files:result.files,explanation:result.explanation},null,2);
     if(stopped||location.href!==page)throw Error('已停止或关卡已变化，代码仅保留预览，未写入。');

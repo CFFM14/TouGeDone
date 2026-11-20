@@ -39,6 +39,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'eh-panel-close') chrome.storage.session.remove(keyFor(tabId)).catch(console.error);
 });
 chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
+  if(change.url)aiRequests.get(tabId)?.abort();
   if (!change.url && change.status !== 'complete') return;
   if (!supportedPage(tab.url)) return;
   try {
@@ -104,7 +105,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (aiRequests.has(id)) throw Error('本标签页已有 AI 请求，请等待或停止。');
     const controller=new AbortController(); aiRequests.set(id,controller);
     const timer=setTimeout(()=>controller.abort(),180000);
-    try { return await EhAI.generate(config,message.input,{signal:controller.signal}); }
+    try { return await EhAI.generate(config,message.input,{signal:controller.signal,onRetry:progress=>chrome.tabs.sendMessage(id,{type:'eh-ai-progress',requestId:message.requestId,url:sender.url,...progress}).catch(()=>{})}); }
     finally {clearTimeout(timer);aiRequests.delete(id);}
   })().then(result=>reply({ok:true,...result}),error=>reply({ok:false,error:error.name==='AbortError'?'AI 请求已取消或超时。':error.message}));
   return true;
