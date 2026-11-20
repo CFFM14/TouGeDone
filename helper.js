@@ -1,11 +1,21 @@
 (() => {
+  const boot = globalThis.__ehBootstrap === true;
+  delete globalThis.__ehBootstrap;
+  const chainKey = 'educoder-helper-next-v1';
+  const canonical = value => { const url = new URL(value, location.href); url.hash = ''; return url.href; };
+  let resume = null;
+  try { resume = JSON.parse(sessionStorage.getItem(chainKey) || 'null'); } catch {}
+  if (boot && (!resume || resume.next !== canonical(location.href) || !Array.isArray(resume.visited) || !Number.isFinite(resume.at) || Date.now() - resume.at > 120000)) return;
+  if (boot) sessionStorage.removeItem(chainKey);
   if (document.getElementById('edu-helper-panel')) return;
-  if (location.hostname !== 'www.educoder.net' || !location.pathname.startsWith('/tasks/')) return alert('请在头歌答题界面打开助手。');
-  let running = false, stopped = false, groups = [];
+  if (!boot) resume = null;
+  const supportedHosts = new Set(['www.educoder.net', 'educoder.net', 'trustie.educoder.net']);
+  if (!supportedHosts.has(location.hostname) || !location.pathname.startsWith('/tasks/')) return alert('请在头歌答题界面打开助手。当前页面：' + location.hostname + location.pathname);
+  let running = false, stopped = false, groups = [], chainActive = false, visited = [];
   const panel = document.createElement('div');
   panel.id = 'edu-helper-panel';
   panel.style.cssText = 'position:fixed;z-index:2147483647;right:20px;top:60px;width:380px;max-height:82vh;overflow:auto;box-sizing:border-box;padding:16px;background:white;color:#172033;border:2px solid #1677ff;border-radius:12px;font:14px/1.6 sans-serif;box-shadow:0 4px 20px #0005';
-  panel.innerHTML = `<b>头歌整关助手 · 2.0</b><button id="eh-close" style="float:right">关闭</button>
+  panel.innerHTML = `<b>头歌整关助手 · 2.1.0</b><button id="eh-close" style="float:right">关闭</button>
     <p>识别当前关卡的单选和多选题，逐题尝试并保留最佳提交。</p>
     <button id="eh-scan">重新识别题目</button> <span id="eh-count"></span>
     <div id="eh-questions" style="margin:10px 0"></div>
@@ -13,6 +23,7 @@
     <select id="eh-question" aria-label="指定题目" disabled></select>
     <p><label>最小提交间隔（秒） <input id="eh-delay" type="number" min="1" max="60" value="1" style="width:55px"></label></p>
     <p style="font-size:12px;color:#586174">开始后会真实提交。整关模式会为未作答题临时选择首项；一次只改一道题，等待本次结果后才继续。停止时会核查当前结果，必要时恢复并提交最佳答案。</p>
+    <p><label><input id="eh-auto" type="checkbox" checked> 通过后自动下一关；无选择题时跳过</label></p><p style="font-size:12px">多选顺序：全选 → 少选一项 → 少选两项 → … → 单项。</p>
     <button id="eh-start">开始整关</button> <button id="eh-stop" disabled>停止并保留最佳</button>
     <p id="eh-status" role="status" aria-live="polite">等待识别。</p>`;
   document.body.appendChild(panel);
@@ -60,11 +71,11 @@
   }
   $('scan').onclick = scan;
   $('scope').onchange = () => { $('question').disabled = $('scope').value === 'all'; $('start').textContent = $('scope').value === 'all' ? '开始整关' : '开始本题'; };
-  $('stop').onclick = () => { stopped = true; status('正在停止：等待当前结果，必要时恢复并提交最佳答案，不再尝试新组合。'); };
-  $('close').onclick = () => { if (running) return $('stop').click(); panel.remove(); };
+  $('stop').onclick = () => { stopped = true; chainActive = false; sessionStorage.removeItem(chainKey); status('正在停止：等待当前结果，必要时恢复并提交最佳答案，不再尝试新组合。'); };
+  $('close').onclick = () => { if (running) return $('stop').click(); sessionStorage.removeItem(chainKey); panel.remove(); };
   const lock = value => {
     running = value;
-    for (const id of ['scan','scope','question','delay','start']) $(id).disabled = value;
+    for (const id of ['scan','scope','question','delay','start','auto']) $(id).disabled = value;
     if (!value) $('question').disabled = $('scope').value === 'all';
     $('stop').disabled = !value;
   };
@@ -98,11 +109,57 @@
     if (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.classList.contains('ant-btn-loading')) throw Error('评测按钮暂不可用。');
     return el;
   };
+  async function waitForLevel() {
+    const started = Date.now();
+    let stable = '', since = 0;
+    while (Date.now() - started < 30000) {
+      if (stopped) throw Error('已停止自动流程。');
+      const inputs = [...document.querySelectorAll('input[type=radio],input[type=checkbox]')].filter(el => !panel.contains(el) && el.getClientRects().length);
+      const loading = [...document.querySelectorAll('.ant-spin-spinning')].some(el => el.getClientRects().length);
+      const ready = [...document.querySelectorAll('a,button')].some(el => el.getClientRects().length && /^(评测|下一关|上一关)$/.test(el.innerText.trim()));
+      const signature = document.title + ':' + inputs.length;
+      if (signature !== stable || loading) { stable = signature; since = Date.now(); }
+      if (!loading && ready && Date.now() - since >= 1200 && (inputs.length || Date.now() - started >= 8000)) return inputs.length > 0;
+      await sleep(300);
+    }
+    throw Error('关卡加载未完成，已停止，未将加载失败的页面当作编程题跳过。');
+  }
+  async function goNext(reason) {
+    if (!chainActive || stopped) return;
+    lock(true);
+    status(reason + '，准备进入下一关…');
+    await sleep(1000);
+    if (stopped || !chainActive) return;
+    const links = [...document.querySelectorAll('a[href]')].filter(el => !panel.contains(el) && el.getClientRects().length && el.innerText.trim() === '下一关' && el.getAttribute('aria-disabled') !== 'true');
+    if (!links.length) { chainActive = false; status(reason + '；自动流程结束，没有下一关。'); lock(false); return; }
+    if (links.length !== 1) throw Error('下一关链接不唯一，已停止。');
+    const next = new URL(links[0].href, location.href);
+    const prefix = location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
+    // Some task links omit classroom/homework segments; retain the current context.
+    if (next.origin === location.origin && /^\/tasks\/[^/]+\/?$/.test(next.pathname) && prefix !== '/tasks/') {
+      next.pathname = prefix + next.pathname.split('/').filter(Boolean).pop();
+    }
+    if (next.origin !== location.origin || !next.pathname.startsWith(prefix) || !next.pathname.startsWith('/tasks/')) throw Error('下一关链接超出当前任务范围，已停止。');
+    const target = canonical(next.href);
+    if (visited.includes(target)) throw Error('下一关指向已访问关卡，已停止，避免循环。');
+    sessionStorage.setItem(chainKey, JSON.stringify({next:target, visited:[...visited,target], delay:$('delay').value, at:Date.now()}));
+    // Full navigation lets the extension resume in a new isolated world reliably.
+    location.assign(target);
+  }
   $('start').onclick = async () => {
     if (running) return;
-    let submitted = false, confirmedMasks = null, bestMasks = null, bestScore = null;
+    let submitted = false, confirmedMasks = null, bestMasks = null, bestScore = null, passed = false;
     const pageUrl = location.href;
     try {
+      stopped = false;
+      const pendingResume = resume; resume = null;
+      chainActive = $('scope').value === 'all' && $('auto').checked;
+      visited = pendingResume?.visited || [canonical(location.href)];
+      lock(true);
+      if (chainActive && !await waitForLevel()) {
+        await goNext('本关未检测到选择题，跳过（未提交评测）');
+        return;
+      }
       groups = discover(); render();
       const full = $('scope').value === 'all';
       const selectedIndex = Number($('question').value);
@@ -122,7 +179,7 @@
       let lastSubmissionAt = 0;
       const task = location.pathname.split('/').pop();
       let useNetwork = false;
-      lock(true); stopped = false;
+      lock(true);
       async function applyMask(group, mask, recovery = false) {
         check();
         if (stopped && !recovery) return false;
@@ -257,12 +314,13 @@
         render();
       }
       bestScore = await evaluate('提交当前整关答案建立基准'); bestMasks = capture();
-      if (bestScore === 0) { groups.forEach(group => { group.note = '整关通过'; }); render(); return status('整关完成：评测通过，已保留最终提交。'); }
+      if (bestScore === 0) { passed = true; groups.forEach(group => { group.note = '整关通过'; }); render(); return status('整关完成：评测通过，已保留最终提交。'); }
       if (stopped) return status('已停止并保留基准答案，不匹配 ' + bestScore + ' 组。');
       for (const index of targets) {
         const group = groups[index], initial = bestMasks[index];
+        const popcount = mask => { let count = 0; while (mask) { mask &= mask - 1; count++; } return count; };
         const distance = mask => { let bits = mask ^ initial, count = 0; while (bits) { bits &= bits - 1; count++; } return count; };
-        const candidates = (group.type === 'radio' ? group.boxes.map((_,i) => 1 << i) : Array.from({length:(1 << group.boxes.length) - 1}, (_,i) => i + 1)).filter(mask => mask !== initial).sort((a,b) => distance(a) - distance(b) || b - a);
+        const candidates = (group.type === 'radio' ? group.boxes.map((_,i) => 1 << i) : Array.from({length:(1 << group.boxes.length) - 1}, (_,i) => i + 1)).filter(mask => mask !== initial).sort((a,b) => group.type === 'radio' ? a - b : popcount(b) - popcount(a) || distance(a) - distance(b) || b - a);
         let improved = false, kept = false, attempt = 0;
         for (const mask of candidates) {
           if (stopped || !await applyMask(group, mask)) break;
@@ -271,7 +329,7 @@
           if (result < bestScore) {
             const previous = bestScore; bestScore = result; bestMasks = capture(); improved = true;
             group.note = '已改善 ' + previous + '→' + result; render();
-            if (bestScore === 0) { groups.forEach(g => { g.note = '整关通过'; }); render(); return status('整关完成：评测通过，已保留全部答案和最新提交。'); }
+            if (bestScore === 0) { passed = true; groups.forEach(g => { g.note = '整关通过'; }); render(); return status('整关完成：评测通过，已保留全部答案和最新提交。'); }
             break;
           }
           if (result > bestScore) {
@@ -289,11 +347,21 @@
       await restoreBest('本轮结束');
       status((full ? '整关尝试结束' : '本题尝试结束') + '，当前不匹配 ' + bestScore + ' 组。已保留最佳提交；剩余问题未能定位。');
     } catch (error) {
+      chainActive = false; sessionStorage.removeItem(chainKey);
       status('停止：' + error.message + (submitted ? ' 最新结果可能尚未确认，请核查记录；未自动重试提交。' : ''));
     } finally {
       if (submitted && location.href === pageUrl) { try { await refreshRecords(); } catch { /* Preserve the more useful result/error message. */ } }
       lock(false);
+      if (passed && chainActive && !stopped) {
+        try { await goNext('本关评测通过'); }
+        catch (error) { chainActive = false; sessionStorage.removeItem(chainKey); lock(false); status('停止：' + error.message); }
+      }
     }
   };
   scan();
+  if (resume) {
+    $('scope').value = 'all'; $('auto').checked = true;
+    $('delay').value = Math.max(1, Math.min(60, Number(resume.delay) || 1));
+    setTimeout(() => { if (panel.isConnected && !stopped) $('start').onclick(); }, 0);
+  }
 })();

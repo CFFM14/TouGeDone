@@ -1,1 +1,42 @@
-{"manifest_version":3,"name":"头歌整关助手","version":"2.0.0","description":"自动识别当前关卡单选和多选题，逐题串行尝试，核查评测并保留最佳提交。","permissions":["activeTab","scripting"],"action":{"default_title":"打开整关助手"},"background":{"service_worker":"background.js"}}
+{
+  "manifest_version": 3,
+  "name": "头歌整关助手",
+  "version": "2.1.0",
+  "description": "自动识别当前关卡单选和多选题，支持头歌主站与 trustie 入口，串行核查评测并保留最佳提交。",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_title": "打开整关助手"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.educoder.net/tasks/*",
+        "https://educoder.net/tasks/*",
+        "https://trustie.educoder.net/tasks/*"
+      ],
+      "js": [
+        "network-bridge.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.educoder.net/tasks/*",
+        "https://educoder.net/tasks/*",
+        "https://trustie.educoder.net/tasks/*"
+      ],
+      "js": [
+        "bootstrap.js",
+        "helper.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

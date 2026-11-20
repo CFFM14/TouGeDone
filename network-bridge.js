@@ -1,6 +1,7 @@
 // Runs in MAIN world. Authentication remains in the page; only normalized results cross worlds.
 (() => {
-  if (location.hostname !== 'www.educoder.net' || !location.pathname.startsWith('/tasks/')) return;
+  const supportedHosts = new Set(['www.educoder.net', 'educoder.net', 'trustie.educoder.net']);
+  if (!supportedHosts.has(location.hostname) || !location.pathname.startsWith('/tasks/')) return;
   if (window.__eduHelperBridgeV1) return;
   window.__eduHelperBridgeV1 = true;
   const original = window.fetch;
@@ -9,7 +10,8 @@
   const emit = data => document.dispatchEvent(new CustomEvent('eh-network-result', {detail:JSON.stringify(data)}));
   const identify = url => {
     const u = new URL(url, location.href);
-    return u.origin === 'https://data.educoder.net' ? u.pathname.match(/^\/api\/tasks\/([^/]+)\/(evaluate_logs|choose_build)\.json$/) : null;
+    const supportedOrigin = u.origin === 'https://data.educoder.net' || u.origin === location.origin;
+    return u.protocol === 'https:' && supportedOrigin ? u.pathname.match(/^\/api\/tasks\/([^/]+)\/(evaluate_logs|choose_build)\.json$/) : null;
   };
   window.fetch = function(input, init) {
     let match, saved;
