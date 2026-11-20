@@ -1,0 +1,27 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ctx={};vm.runInNewContext(fs.readFileSync('solution-policy.js','utf8')+fs.readFileSync('ai-service.js','utf8'),ctx);const AI=ctx.EhAI;
+const original='class A {\n// begin\n// todo\n// end\n}',input={task:'在允许的区域和文件中实现成员',code:original,file:'A.java',language:'java',context:{editablePaths:['A.java','B.java'],files:[{path:'A.java',code:original},{path:'B.java',code:'class B {}'}]}};
+const valid={plan:{kind:'类与对象',approach:'补齐调用所需成员'},files:[{path:'A.java',regions:[{index:1,code:'int count=1;'}],reason:'补齐成员'}]};
+const reply=(content,finish_reason='stop')=>({ok:true,json:async()=>({choices:[{finish_reason,message:{content}}]})});
+(async()=>{
+ const bodies=[];let calls=0;
+ const generated=await AI.generate({key:'mock-prompt-secret'},input,{fetchImpl:async(_,r)=>{const body=JSON.parse(r.body);bodies.push(body);calls++;return reply(calls===1?'INVALID_OUTPUT_SENTINEL':JSON.stringify(valid));}});
+ assert.equal(calls,2);assert.ok(generated.files[0].code.includes('int count=1;'));
+ const payload=JSON.parse(bodies[0].messages[1].content);
+ assert.deepEqual(payload.output_contract,[{path:'A.java',mode:'regions',region_indices:[1]},{path:'B.java',mode:'code'}]);
+ assert.equal(payload.current_code,original);assert.equal(payload.related_files[0].code,'class B {}');
+ const example=JSON.parse(bodies[0].messages[0].content.match(/替换为本题所需实现：\n([^\n]+)/)[1]);
+ assert.equal(example.files[0].path,'A.java');assert.ok(example.files[0].regions);assert.equal('code' in example.files[0],false);
+ assert.equal(example.files[1].path,'B.java');assert.equal(typeof example.files[1].code,'string');assert.equal('regions' in example.files[1],false);
+ assert.ok(example.files[1].code.includes('"'));assert.ok(example.files[1].code.includes('\n'));
+ assert.equal(bodies[1].messages.length,3);assert.equal(bodies[1].messages[2].role,'user');assert.equal(bodies[1].messages[1].content,bodies[0].messages[1].content);
+ assert.ok(!JSON.stringify(bodies[1]).includes('INVALID_OUTPUT_SENTINEL'));assert.ok(!JSON.stringify(bodies).includes('mock-prompt-secret'));
+ assert.deepEqual(bodies[0].thinking,{type:'enabled'});assert.equal(bodies[0].reasoning_effort,'high');assert.equal(bodies[0].max_tokens,65536);assert.equal(bodies[1].max_tokens,65536);assert.equal('temperature' in bodies[0],false);
+ const budgets=[];calls=0;
+ await AI.generate({key:'mock'},input,{fetchImpl:async(_,r)=>{budgets.push(JSON.parse(r.body).max_tokens);return ++calls<3?reply('{partial','length'):reply(JSON.stringify(valid));}});
+ assert.deepEqual(budgets,[65536,131072,131072]);
+ calls=0;await AI.generate({key:'mock'},input,{fetchImpl:async()=>{calls++;return reply('```json\n'+JSON.stringify(valid)+'\n```');}});assert.equal(calls,1,'完整单一JSON围栏可本地严格解析，无须浪费补试');
+ calls=0;await AI.generate({key:'mock'},input,{fetchImpl:async()=>++calls===1?reply('下面是结果：'+JSON.stringify(valid)):reply(JSON.stringify(valid))});assert.equal(calls,2,'混杂说明不能靠猜测截取JSON');
+ calls=0;const bad=structuredClone(valid);bad.files[0].regions=[{index:99,code:'wrong'}];await assert.rejects(AI.generate({key:'mock'},input,{fetchImpl:async()=>{calls++;return reply('```json\n'+JSON.stringify(bad)+'\n```');}}),e=>e.code==='EH_TEMPLATE');assert.equal(calls,3,'去围栏后仍须通过原模板/路径校验');
+ console.log('通过：混合文件逐路径唯一输出契约、可解析且正确转义的结构示例、保留完整上下文、补试不回传坏样本、保留思考模式、截断预算上限，以及安全去围栏后继续严格校验。模拟API。');
+})().catch(e=>{console.error(e);process.exitCode=1;});

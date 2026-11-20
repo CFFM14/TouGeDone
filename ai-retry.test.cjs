@@ -25,7 +25,7 @@ const invalids=[
  for(const [name,bad] of invalids){let calls=0;const requests=[],progress=[],before=JSON.stringify(input);
   const result=await AI.generate(config,input,{fetchImpl:async(_,r)=>{requests.push(JSON.parse(r.body));return ++calls===1?bad():reply(valid);},onRetry:p=>progress.push(p)});
   assert.equal(calls,2,name);assert.equal(result.files[0].code,valid.files[0].code,name);assert.equal(progress[0].attempt,2);assert.equal(progress[0].maxAttempts,3);assert.ok(progress[0].reason);
-  assert.equal(requests[0].messages[1].content,requests[1].messages[1].content,'题目与已有源码始终保留');assert.ok(requests[1].messages[3].content.includes('未写入'));assert.equal(JSON.stringify(input),before);
+  assert.equal(requests[0].messages[1].content,requests[1].messages[1].content,'题目与已有源码始终保留');assert.ok(requests[1].messages[2].content.includes('未写入'));assert.equal(JSON.stringify(input),before);
  }
  let calls=0;const progress=[];await assert.rejects(AI.generate(config,input,{fetchImpl:async()=>{calls++;return raw('{bad');},onRetry:p=>progress.push(p)}),e=>e.code==='EH_AI_RESPONSE'&&e.attempts===3&&e.message.includes('JSON'));assert.equal(calls,3);assert.deepEqual(progress.map(p=>p.attempt),[2,3]);
  calls=0;const bodies=[];await AI.generate(config,input,{fetchImpl:async(_,r)=>{bodies.push(JSON.parse(r.body));calls++;return calls===1?raw('not JSON '+config.key):calls===2?reply({}):reply(valid);}});assert.equal(calls,3);assert.ok(bodies.every(b=>b.messages.length<=4));assert.ok(!JSON.stringify(bodies).includes(config.key));

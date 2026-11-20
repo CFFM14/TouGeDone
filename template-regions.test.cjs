@@ -22,7 +22,7 @@ const reply=value=>({ok:true,json:async()=>({choices:[{finish_reason:'stop',mess
  assert.throws(()=>P.validate(changedOutside,input),e=>e.code==='EH_TEMPLATE');
  let calls=0,requests=[];
  const generated=await AI.generate({key:'mock-not-real'},input,{fetchImpl:async(_,request)=>{requests.push(JSON.parse(request.body));return reply(++calls===1?changedOutside:patched);}});
- assert.equal(calls,2);assert.equal(generated.files[0].code,code);assert.equal(requests[0].messages.length,2);assert.equal(requests[1].messages.length,4);assert.ok(requests[1].messages[3].content.includes('未写入'));assert.ok(!JSON.stringify(requests).includes('mock-not-real'));
+ assert.equal(calls,2);assert.equal(generated.files[0].code,code);assert.equal(requests[0].messages.length,2);assert.equal(requests[1].messages.length,3);assert.ok(requests[1].messages[2].content.includes('未写入'));assert.ok(!JSON.stringify(requests).includes('mock-not-real'));
  const sent=JSON.parse(requests[0].messages[1].content);assert.equal(sent.template_regions[0].regions.length,2);assert.equal(sent.template_regions[0].regions[0].index,1);
  calls=0;await assert.rejects(AI.generate({key:'mock'},input,{fetchImpl:async()=>{calls++;return reply(changedOutside);}}),e=>e.code==='EH_TEMPLATE');assert.equal(calls,3,'template repair must be bounded to two retries');
  calls=0;const forbidden=structuredClone(patched);forbidden.files[0].path='../outside.java';await assert.rejects(AI.generate({key:'mock'},input,{fetchImpl:async()=>{calls++;return reply(forbidden);}}),/未确认/);assert.equal(calls,3,'unconfirmed paths must remain rejected across two correction retries');
