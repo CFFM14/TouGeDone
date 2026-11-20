@@ -10,7 +10,7 @@ globalThis.EhPanel = {
     const controls={theme:panel.querySelector('#eh-appearance-theme'),accent:panel.querySelector('#eh-appearance-accent'),density:panel.querySelector('#eh-appearance-density')};
     const media=win.matchMedia?.('(prefers-color-scheme: dark)');
     const apply=()=>{
-      if(!['light','dark','system'].includes(settings.theme))settings.theme=defaults.theme;
+      if(!['light','dark','system','pink','cyber','classic'].includes(settings.theme))settings.theme=defaults.theme;
       if(!['blue','violet','teal'].includes(settings.accent))settings.accent=defaults.accent;
       if(!['comfortable','compact'].includes(settings.density))settings.density=defaults.density;
       panel.dataset.theme=settings.theme==='system'?(media?.matches?'dark':'light'):settings.theme;

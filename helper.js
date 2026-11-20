@@ -44,6 +44,14 @@
     #edu-helper-panel[data-theme=dark]{--eh-link:#9abcff}
     #edu-helper-panel[data-theme=dark][data-accent=violet]{--eh-link:#c6a4ff}
     #edu-helper-panel[data-theme=dark][data-accent=teal]{--eh-link:#7de2ce}
+    #edu-helper-panel[data-theme=pink]{--eh-bg:#fff8fc;--eh-soft:#fff0f6;--eh-text:#64364e;--eh-muted:#906578;--eh-border:#efc6d9;--eh-accent:#b72d70;--eh-link:#ad2568;--eh-accent-soft:#ffe4f0;--eh-head:linear-gradient(120deg,#ffe0ee,#f3e6ff);--eh-success:#267344;--eh-warning:#935018;border-radius:22px!important;box-shadow:0 12px 36px #ab387c24!important}
+    #edu-helper-panel[data-theme=cyber]{--eh-bg:#0b1022;--eh-soft:#141a32;--eh-text:#e1edff;--eh-muted:#a4b4d2;--eh-border:#344c73;--eh-accent:#56e8ee;--eh-link:#74f2ed;--eh-accent-soft:#172841;--eh-head:linear-gradient(120deg,#142c44,#281739);--eh-success:#83f2bb;--eh-warning:#ffcf78;border-radius:7px!important;border-color:#56e8ee!important;box-shadow:0 0 0 1px #56e8ee24,0 10px 32px #080d26aa,0 0 24px #ce4cff24!important;font-family:Consolas,"Microsoft YaHei",monospace!important}
+    #edu-helper-panel[data-theme=classic]{--eh-bg:#faf5e8;--eh-soft:#f1ead8;--eh-text:#403e33;--eh-muted:#756c56;--eh-border:#cfc3a7;--eh-accent:#8d453d;--eh-link:#834039;--eh-accent-soft:#eee3d0;--eh-head:linear-gradient(120deg,#ede0c5,#e5e9dc);--eh-success:#3d6d4a;--eh-warning:#885d21;border-radius:10px!important;box-shadow:0 10px 30px #55472e26!important;font-family:"Noto Serif SC","Songti SC",SimSun,serif!important}
+    #edu-helper-panel[data-theme=pink] #eh-drag-handle,#edu-helper-panel[data-theme=cyber] #eh-drag-handle,#edu-helper-panel[data-theme=classic] #eh-drag-handle{background:var(--eh-head)!important;border-bottom:1px solid var(--eh-border)}
+    #edu-helper-panel[data-theme=pink] button{border-radius:12px}
+    #edu-helper-panel[data-theme=cyber] #eh-start{color:#0b1022}
+    #edu-helper-panel[data-theme=cyber] #eh-drag-handle>div>span{color:#0b1022!important}
+    #edu-helper-panel[data-theme=classic] #eh-drag-handle b{letter-spacing:.5px}
     #edu-helper-panel[data-density=compact]{font-size:13px!important}
     #edu-helper-panel[data-density=compact] #eh-body{padding:9px 13px!important}
     #edu-helper-panel[data-density=compact] #eh-guide li{margin:3px 0}
@@ -83,7 +91,8 @@
       <p id="eh-status" role="status" aria-live="polite" style="padding:9px 11px;background:var(--eh-accent-soft);border-radius:8px;overflow-wrap:anywhere">等待开始。</p>
       <details id="eh-advanced" style="margin-top:14px"><summary>高级选项与外观</summary>
         <div style="padding:10px 0;border-bottom:1px solid var(--eh-border)"><b style="font-size:12px">外观设置</b>
-          <p style="display:flex;gap:6px;flex-wrap:wrap"><label>主题 <select id="eh-appearance-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label><label>配色 <select id="eh-appearance-accent"><option value="blue">蓝色</option><option value="violet">紫色</option><option value="teal">青绿</option></select></label></p>
+          <p style="display:flex;gap:6px;flex-wrap:wrap"><label>主题 <select id="eh-appearance-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option><option value="pink">少女心</option><option value="cyber">赛博朋克</option><option value="classic">古风古韵</option></select></label><label>配色 <select id="eh-appearance-accent"><option value="blue">蓝色</option><option value="violet">紫色</option><option value="teal">青绿</option></select></label></p>
+          <p style="font-size:12px;color:var(--eh-muted)">特色主题自带配色，切换后自动记住；浅色、深色和跟随系统可单独调整配色。</p>
           <label>布局 <select id="eh-appearance-density"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label>
         </div>
         <p><button id="eh-scan">重新识别题目</button> <span id="eh-count"></span></p>

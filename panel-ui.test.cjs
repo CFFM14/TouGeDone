@@ -20,5 +20,10 @@ assert.equal(appearancePanel.dataset.theme,'light');controls['#eh-appearance-the
 controls['#eh-appearance-accent'].value='violet';controls['#eh-appearance-accent'].emit('change');controls['#eh-appearance-density'].value='compact';controls['#eh-appearance-density'].emit('change');appearance.dispose();
 appearance=UI.appearance({panel:appearancePanel,storage,win:{matchMedia:()=>media}});assert.equal(appearancePanel.dataset.theme,'dark');assert.equal(appearancePanel.dataset.accent,'violet');assert.equal(appearancePanel.dataset.density,'compact');
 controls['#eh-appearance-theme'].value='system';controls['#eh-appearance-theme'].emit('change');media.matches=true;media.emit('change');assert.equal(appearancePanel.dataset.theme,'dark');media.matches=false;media.emit('change');assert.equal(appearancePanel.dataset.theme,'light');appearance.dispose();
+for(const theme of ['pink','cyber','classic']){
+  appearance=UI.appearance({panel:appearancePanel,storage,win:{matchMedia:()=>media}});
+  controls['#eh-appearance-theme'].value=theme;controls['#eh-appearance-theme'].emit('change');assert.equal(appearancePanel.dataset.theme,theme);appearance.dispose();
+  appearance=UI.appearance({panel:appearancePanel,storage,win:{matchMedia:()=>media}});assert.equal(appearancePanel.dataset.theme,theme,'特色主题应保留到下一关');assert.equal(appearancePanel.dataset.accent,'violet');appearance.dispose();
+}
 const helper=fs.readFileSync('helper.js','utf8');assert.ok(helper.includes('<option value="mixed" selected>'));assert.ok(helper.indexOf('id="eh-ai-run"')>helper.indexOf('id="eh-advanced"'));assert.ok(helper.indexOf('id="eh-ai-settings"')>helper.indexOf('id="eh-status"'));
 console.log('通过：拖动保存与下一关恢复、视口限位/缩放、交互按钮不触发拖动、键盘移动、监听清理、损坏位置恢复；默认混合模式与密钥引导。');
