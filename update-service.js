@@ -1,4 +1,4 @@
-// Release metadata only. Remote code is never evaluated or installed here.
+// Read release metadata; the settings page handles explicitly authorized installs.
 globalThis.EhUpdate={
   api:'https://api.github.com/repos/CFFM14/TouGeDone/releases/latest',
   releases:'https://github.com/CFFM14/TouGeDone/releases',
@@ -23,6 +23,9 @@ globalThis.EhUpdate={
     if(!asset)throw Error('发现 v'+latest+'，但正式安装包尚未发布，请稍后重试。');
     const expected='https://github.com/CFFM14/TouGeDone/releases/download/'+encodeURIComponent(release.tag_name)+'/'+name;
     if(asset.browser_download_url!==expected)throw Error('更新安装包地址不属于预期仓库，已拒绝打开。');
-    return {state:'available',current,latest,page,url:expected,name,notes:typeof release.body==='string'?release.body.slice(0,2000):'',releases:this.releases};
+    const bundleName='TouGeDone-v'+latest+'.bundle.json',bundle=release.assets?.find(a=>a.name===bundleName&&a.state==='uploaded');
+    const bundleURL=this.releases+'/download/'+encodeURIComponent(release.tag_name)+'/'+bundleName;
+    if(bundle&&(bundle.browser_download_url!==bundleURL||!/^sha256:[a-f0-9]{64}$/.test(bundle.digest||'')))throw Error('一键更新包地址或校验信息无效。');
+    return {state:'available',current,latest,page,url:expected,name,bundle:bundle?{url:bundleURL,digest:bundle.digest.slice(7)}:null,notes:typeof release.body==='string'?release.body.slice(0,2000):'',releases:this.releases};
   }
 };

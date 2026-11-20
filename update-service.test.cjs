@@ -12,5 +12,8 @@ for(const status of [403,429,500])await assert.rejects(U.check('2.9.0',{fetchImp
 for(const field of ['draft','prerelease']){const data=release('2.10.0');data[field]=true;await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(data)}));}
 for(const url of ['https://evil.example/extension.zip','http://github.com/CFFM14/TouGeDone/releases/download/v2.10.0/TouGeDone-v2.10.0.zip','https://github.com/Other/Repo/releases/download/v2.10.0/TouGeDone-v2.10.0.zip']){const data=release('2.10.0');data.assets[0].browser_download_url=url;await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(data)}),/地址/);}
 const missing=release('2.10.0');missing.assets=[];await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(missing)}),/安装包/);
+const bundled=release('2.9.1');bundled.assets.push({name:'TouGeDone-v2.9.1.bundle.json',state:'uploaded',digest:'sha256:'+'a'.repeat(64),browser_download_url:'https://github.com/CFFM14/TouGeDone/releases/download/v2.9.1/TouGeDone-v2.9.1.bundle.json'});
+assert.equal((await U.check('2.9.0',{fetchImpl:fetchRelease(bundled)})).bundle.digest,'a'.repeat(64));
+for(const mutate of [a=>a.digest=null,a=>a.browser_download_url='https://evil.example/bundle.json']){const bad=structuredClone(bundled);mutate(bad.assets[1]);await assert.rejects(U.check('2.9.0',{fetchImpl:fetchRelease(bad)}),/校验/);}
 console.log('通过：GitHub更新版本数值比较、正式版筛选、空发布/限流/错误处理、安装包地址白名单、不发送认证或Cookie。模拟GitHub API。');
 })().catch(e=>{console.error(e);process.exitCode=1;});

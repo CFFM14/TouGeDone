@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "天下人苦头歌久矣",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "description": "单选逐题尝试，多选清洗锁定后3/4题并行、差量切换与命中拆分；支持Flash编程自动评测。",
   "permissions": [
     "activeTab",
@@ -59,7 +59,9 @@
     "https://educoder.net/tasks/*",
     "https://trustie.educoder.net/tasks/*",
     "https://api.deepseek.com/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://github.com/*",
+    "https://release-assets.githubusercontent.com/*"
   ],
   "options_page": "options.html",
   "icons": {

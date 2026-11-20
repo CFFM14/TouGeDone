@@ -117,7 +117,7 @@
   // Bind before optional UI modules initialize: even a partial startup failure
   // must leave a working close button.
   panel.querySelector('#eh-close').onclick=closePanel;
-  globalThis.__ehController = {url:location.href, dispose};
+  globalThis.__ehController = {url:location.href, dispose, get running(){return running||chainActive;}};
   const $ = id => panel.querySelector('#eh-' + id);
   const status = text => { if(!closed)$('status').textContent = text; };
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -381,6 +381,7 @@
   }
   $('start').onclick = async () => {
     if (running) return;
+    if(globalThis.__ehUpdating){status('插件正在更新，请稍后刷新页面。');return;}
     let submitted = false, confirmedMasks = null, bestMasks = null, bestScore = null, passed = false;
     const pageUrl = location.href;
     try {

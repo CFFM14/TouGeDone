@@ -53,19 +53,21 @@ def main():
         if error.code != 404:
             raise RuntimeError(f'GitHub 授权或读取失败（HTTP {error.code}）。') from None
         body = {'tag_name': tag, 'target_commitish': commit,
-                'name': '天下人苦头歌久矣 ' + tag, 'draft': False, 'prerelease': False,
-                'body': f'正式版 {tag}。\n\n下载 `{package.name}`，解压覆盖原加载目录，在 Edge 扩展页重新加载，再刷新答题页。\n\n完整变化见仓库《版本更新记录.md》。解压版不会自动覆盖本地文件。'}
+                'name': '天下人苦头歌久矣 ' + tag, 'draft': True, 'prerelease': False,
+                'body': f'正式版 {tag}。\n\n下载 `{package.name}`，解压覆盖原加载目录，在 Edge 扩展页重新加载，再刷新答题页。\n\n完整变化见仓库《版本更新记录.md》。2.9.1 起可在设置中授权原插件目录，之后点击“一键更新”。首次升级旧版仍需手动覆盖一次。'}
         release = request(API + '/releases', json.dumps(body, ensure_ascii=False).encode(), method='POST')
     if release.get('target_commitish') not in (commit, 'main'):
         raise RuntimeError('已有同名发布指向其他提交，未覆盖。')
     existing = {asset['name'] for asset in release.get('assets', [])}
-    for file in (package, checksum):
+    for file in (package, checksum, package.parent / f'TouGeDone-v{version}.bundle.json'):
         if file.name in existing:
             print(f'已存在 {file.name}，保留原附件。')
             continue
         upload = f'https://uploads.github.com/repos/CFFM14/TouGeDone/releases/{release["id"]}/assets?name={quote(file.name)}'
         request(upload, file.read_bytes(), 'application/octet-stream', 'POST')
         print(f'已上传 {file.name}')
+    if release.get('draft'):
+        release = request(API + '/releases/' + str(release['id']), json.dumps({'draft': False}).encode(), method='PATCH')
     print(release['html_url'])
 
 if __name__ == '__main__':
