@@ -55,19 +55,50 @@ chrome.tabs.onRemoved.addListener(tabId => {
 });
 
 const aiRequests = new Map();
-let updateRequest=null;
-const checkRelease=()=>{
-  if(!updateRequest)updateRequest=EhUpdate.check(chrome.runtime.getManifest().version).finally(()=>{updateRequest=null;});
+let updateRequest=null,releaseState=null;
+const releaseStateKey='eh-release-state';
+const releaseNotice=()=>{
+  const current=chrome.runtime.getManifest().version,state=releaseState?.version===current?releaseState:null;
+  const available=state?.result?.state==='available';
+  return {current,available,latest:available?state.result.latest:null,checkedAt:state?.at||0,stale:!!state?.error};
+};
+const announceRelease=async()=>{
+  if(!chrome.tabs.query||!chrome.tabs.sendMessage)return;
+  try{const tabs=(await chrome.tabs.query({})).filter(tab=>supportedPage(tab.url));await Promise.allSettled(tabs.map(tab=>chrome.tabs.sendMessage(tab.id,{type:'eh-update-notice',...releaseNotice()})));}catch{}
+};
+const checkRelease=async(force=true)=>{
+  const version=chrome.runtime.getManifest().version;
+  try{
+    const stored=(await chrome.storage.session.get(releaseStateKey))[releaseStateKey];
+    if(stored?.version===version&&(!releaseState||releaseState.version!==version||stored.at>releaseState.at))releaseState=stored;
+  }catch{}
+  if(updateRequest)return updateRequest;
+  const prior=releaseState?.version===version?releaseState:null,age=Date.now()-(prior?.at||0);
+  if(!force&&prior&&age>=0&&age<(prior.error?60000:300000)){
+    if(prior.error)throw Error(prior.error);
+    return prior.result;
+  }
+  updateRequest=(async()=>{
+    try{
+      const result=await EhUpdate.check(version);
+      releaseState={version,at:Date.now(),result};
+      return result;
+    }catch(error){releaseState={version,at:Date.now(),result:prior?.result||null,error:error.message};throw error;}
+    finally{
+      try{await chrome.storage.session.set({[releaseStateKey]:releaseState});}catch{}
+      await announceRelease();
+    }
+  })().finally(()=>{updateRequest=null;});
   return updateRequest;
 };
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   const fromTask = sender.tab?.id && supportedPage(sender.url);
   const fromSettings = sender.url === chrome.runtime.getURL('options.html');
-  if(message.type==='eh-update-options'&&fromTask){
-    chrome.storage.session.set({'eh-options-source':sender.tab.id,'eh-update-autocheck':true}).then(()=>chrome.runtime.openOptionsPage()).catch(console.error);return;
+  if(message.type==='eh-update-status'&&fromTask){
+    checkRelease(false).then(()=>reply({ok:true,...releaseNotice()}),error=>reply({ok:false,error:error.message,...releaseNotice()}));return true;
   }
   if(fromSettings&&['eh-update-check','eh-update-download'].includes(message.type)){
-    (async()=>{const result=await checkRelease();
+    (async()=>{const result=await checkRelease(message.type==='eh-update-download'||message.force!==false);
       if(message.type==='eh-update-download'){
         if(result.state!=='available')throw Error('目前没有可下载的更新，请先检查版本。');
         await chrome.tabs.create({url:result.url});return {state:'download_opened',latest:result.latest};
@@ -79,7 +110,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     chrome.storage.local.get('deepseekConfig').then(({deepseekConfig:config})=>reply({ok:true,configured:typeof config?.key==='string'&&!!config.key.trim()}),()=>reply({ok:false,error:'无法读取密钥配置，请重新加载扩展。'}));
     return true;
   }
-  if (message.type === 'eh-ai-settings' && fromTask) { chrome.storage.session.set({'eh-options-source':sender.tab.id}).then(()=>chrome.runtime.openOptionsPage()).catch(console.error); return; }
+  if (message.type === 'eh-ai-settings' && fromTask) { chrome.storage.session.set({'eh-options-source':sender.tab.id,'eh-update-autocheck':message.updates===true}).then(()=>chrome.runtime.openOptionsPage()).catch(console.error); return; }
   if (message.type === 'eh-ai-cancel' && fromTask) { aiRequests.get(sender.tab.id)?.abort(); return; }
   if (!((message.type === 'eh-ai-generate' && fromTask) || (message.type === 'eh-ai-test' && fromSettings))) return;
   (async () => {

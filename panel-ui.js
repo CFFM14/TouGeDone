@@ -1,4 +1,19 @@
 globalThis.EhPanel = {
+  updateNotice({button,dot,runtime,isClosed=()=>false}){
+    let disposed=false,lastAt=-1;
+    dot.hidden=true;
+    const apply=value=>{
+      if(disposed||isClosed()||!value||value.current!==runtime?.getManifest?.().version||typeof value.available!=='boolean'||(value.checkedAt||0)<lastAt)return;
+      lastAt=value.checkedAt||0;dot.hidden=!value.available;
+      const label=value.available?'设置（有新版本 v'+value.latest+'）':'设置';
+      button.setAttribute('aria-label',label);
+      button.title=value.available?label+(value.stale?'，最近检查未成功，可在设置中重试':''):'密钥设置与版本更新';
+    };
+    const listener=(message,sender)=>{if(sender.id===runtime?.id&&message.type==='eh-update-notice')apply(message);};
+    try{runtime?.onMessage?.addListener(listener);}catch{}
+    try{Promise.resolve(runtime?.sendMessage({type:'eh-update-status'})).then(apply).catch(()=>{});}catch{}
+    return {dispose(){disposed=true;try{runtime?.onMessage?.removeListener(listener);}catch{}}};
+  },
   guide(mode){
     if(mode==='choice')return ['打开选择题关卡，选择“选择题助手”。','直接点击“开始”；无需 DeepSeek 密钥。','助手自动提交评测，通过后按勾选设置进入下一关。'];
     return ['先点右下角“设置”，填写 DeepSeek API Key 并保存；同一扩展只需配置一次。',mode==='mixed'?'选择“混合模式”，回到答题页点击“开始”。':'选择“编程题助手”，回到答题页点击“开始”。','助手自动生成、保存和评测代码；失败后等待至少30秒再修复重试。'+(mode==='mixed'?'遇到选择题会自动切换处理。':'')];

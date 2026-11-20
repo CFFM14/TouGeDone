@@ -5,7 +5,7 @@ const chrome={runtime:{getManifest:()=>({version:'2.9.6'}),reload(){throw Error(
 vm.runInNewContext(fs.readFileSync('update-options.js','utf8'),{document:{getElementById:id=>nodes[id]},chrome,indexedDB:{deleteDatabase:name=>{deleted.push(name);return cleanup={};},open(){throw Error('must not read old backups');}},showDirectoryPicker(){throw Error('must not request directory');},fetch(){throw Error('must not fetch executable payload');}});
 (async()=>{
  await new Promise(setImmediate);assert.deepEqual(deleted,['tougedone-updater']);cleanup.onblocked();assert.match(nodes['update-cleanup'].textContent,/关闭/);
- await nodes['update-check'].onclick();await nodes['update-download'].onclick();assert.deepEqual(calls,['eh-update-check','eh-update-download']);assert.match(nodes['update-status'].textContent,/手动覆盖/);
+ await nodes['update-check'].onclick();await nodes['update-download'].onclick();assert.deepEqual(calls,['eh-update-check','eh-update-check','eh-update-download']);assert.match(nodes['update-status'].textContent,/手动覆盖/);
  const report=JSON.parse(execFileSync('python',['-c',"import sys,json;sys.path.insert(0,'scripts');from package import build;from zipfile import ZipFile;v,p,c=build();z=ZipFile(p);print(json.dumps({'files':z.namelist(),'html':z.read('options.html').decode('utf-8')}))"],{encoding:'utf8'}));
  assert.ok(!report.files.some(name=>name.includes('directory-update')||name.endsWith('.bundle.json')));
  for(const term of ['update-install','update-folder','update-restore','directory-update.js'])assert.ok(!report.html.includes(term));

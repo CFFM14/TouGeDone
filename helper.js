@@ -63,6 +63,8 @@
     #edu-helper-panel #eh-guide-card{border:1px solid var(--eh-border)}
     #edu-helper-panel #eh-guide li::marker{color:var(--eh-link);font-weight:700}
     #edu-helper-panel #eh-ai-settings{display:flex;gap:6px;align-items:center;color:var(--eh-link)}
+    #edu-helper-panel #eh-ai-settings{position:relative}
+    #edu-helper-panel #eh-update-dot{position:absolute;top:2px;right:3px;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px var(--eh-bg);pointer-events:none}
     #edu-helper-panel svg{flex-shrink:0}
     @media(prefers-reduced-motion:reduce){#edu-helper-panel button{transition:none}}
 
@@ -113,7 +115,7 @@
       </details>
       <p style="font-size:11px;color:var(--eh-muted)">“开始”会真实提交评测；未确认通过时不会进入下一关。</p>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--eh-border);background:var(--eh-bg);flex-shrink:0"><span style="font-size:11px;color:var(--eh-muted)">位置自动记忆</span><button id="eh-updates" title="检查 GitHub 新版本">更新</button><button id="eh-ai-settings" title="配置 DeepSeek API Key"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg>设置</button></div>`;
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--eh-border);background:var(--eh-bg);flex-shrink:0"><span style="font-size:11px;color:var(--eh-muted)">位置自动记忆</span><button id="eh-ai-settings" title="密钥与版本更新" aria-label="设置"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg>设置<span id="eh-update-dot" hidden aria-hidden="true"></span></button></div>`;
   document.body.appendChild(panel);
   const notify = type => {
     try { globalThis.chrome?.runtime?.sendMessage({type}).catch(() => {}); } catch {}
@@ -157,9 +159,10 @@
   }
   const appearanceUi=EhPanel.appearance({panel,storage:sessionStorage});
   const panelUi=EhPanel.mount({panel,handle:$('drag-handle'),storage:sessionStorage});
+  const updateUi=EhPanel.updateNotice({button:$('ai-settings'),dot:$('update-dot'),runtime:globalThis.chrome?.runtime,isClosed:()=>closed});
   const refreshOnReturn=()=>{if(panel.isConnected&&$('mode').value!=='choice'&&!document.hidden)refreshConfig();};
   window.addEventListener('focus',refreshOnReturn);document.addEventListener('visibilitychange',refreshOnReturn);
-  uiDispose=()=>{appearanceUi.dispose();panelUi.dispose();window.removeEventListener('focus',refreshOnReturn);document.removeEventListener('visibilitychange',refreshOnReturn);};
+  uiDispose=()=>{updateUi.dispose();appearanceUi.dispose();panelUi.dispose();window.removeEventListener('focus',refreshOnReturn);document.removeEventListener('visibilitychange',refreshOnReturn);};
   const maskOf = group => group.boxes.reduce((mask, box, i) => mask | (box.checked ? 1 << i : 0), 0);
   const answer = mask => [...Array(26)].map((_, i) => mask & (1 << i) ? String.fromCharCode(65 + i) : '').filter(Boolean).join('、') || '未作答';
   const parse = text => {
@@ -270,8 +273,7 @@
     pendingEditors.add(cancel);
     document.dispatchEvent(new CustomEvent('eh-editor-v5-request',{detail:JSON.stringify({id,op,url:location.href,...data})}));
   });
-  $('updates').onclick=()=>notify('eh-update-options');
-  $('ai-settings').onclick=()=>globalThis.chrome?.runtime?.sendMessage({type:'eh-ai-settings'});
+  $('ai-settings').onclick=()=>globalThis.chrome?.runtime?.sendMessage({type:'eh-ai-settings',updates:!$('update-dot').hidden});
   async function generateCode(feedback = '') {
     if(!globalThis.EhSources||!globalThis.EhSolution)throw Error('编程模块未加载，请在扩展页重新加载插件，再刷新答题页。');
     const page=location.href;
