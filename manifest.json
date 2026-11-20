@@ -1,1 +1,1 @@
-{"manifest_version":3,"name":"头歌逐题组合助手","version":"1.2.0","description":"串行提交单题组合，通过评测响应和新记录编号确认结果，完成后再继续。","permissions":["activeTab","scripting"],"action":{"default_title":"打开逐题组合助手"},"background":{"service_worker":"background.js"}}
+{"manifest_version":3,"name":"头歌整关助手","version":"2.0.0","description":"自动识别当前关卡单选和多选题，逐题串行尝试，核查评测并保留最佳提交。","permissions":["activeTab","scripting"],"action":{"default_title":"打开整关助手"},"background":{"service_worker":"background.js"}}
