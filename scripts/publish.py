@@ -4,6 +4,7 @@ Uses existing Git credentials in memory. Never writes or prints credentials.
 """
 import json
 import os
+import re
 import subprocess
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -11,6 +12,21 @@ from urllib.request import Request, urlopen
 from package import ROOT, build
 
 API = 'https://api.github.com/repos/CFFM14/TouGeDone'
+
+def make_descriptor(release, tag):
+    descriptor = {'format': 1, 'repository': 'CFFM14/TouGeDone', 'tag_name': tag,
+                  'draft': False, 'prerelease': False, 'body': release.get('body', ''),
+                  'assets': []}
+    for asset in release['assets']:
+        # Draft assets use an untagged-* URL, which becomes invalid after publication.
+        descriptor['assets'].append({key: asset.get(key) for key in ('name', 'state', 'digest')})
+        descriptor['assets'][-1]['browser_download_url'] = (
+            'https://github.com/CFFM14/TouGeDone/releases/download/'
+            + quote(tag, safe='') + '/' + quote(asset['name'], safe=''))
+    bundle_asset = next(a for a in descriptor['assets'] if a['name'] == f'TouGeDone-{tag}.bundle.json')
+    if not re.fullmatch(r'sha256:[a-f0-9]{64}', str(bundle_asset['digest'])):
+        raise RuntimeError('一键更新包缺少 GitHub SHA-256，未发布备用信息。')
+    return descriptor
 
 def git(*args, input=None):
     env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
@@ -71,13 +87,7 @@ def main():
     release = request(API + '/releases/' + str(release['id']))
     descriptor_name = 'TouGeDone-update.json'
     if descriptor_name not in {a['name'] for a in release.get('assets', [])}:
-        descriptor = {'format': 1, 'repository': 'CFFM14/TouGeDone', 'tag_name': tag,
-                      'draft': False, 'prerelease': False, 'body': release.get('body', ''),
-                      'assets': [{key: asset.get(key) for key in ('name', 'state', 'digest', 'browser_download_url')}
-                                 for asset in release['assets']]}
-        bundle_asset = next(a for a in descriptor['assets'] if a['name'].endswith('.bundle.json'))
-        if not str(bundle_asset['digest']).startswith('sha256:'):
-            raise RuntimeError('一键更新包缺少 GitHub SHA-256，未发布备用信息。')
+        descriptor = make_descriptor(release, tag)
         upload = f'https://uploads.github.com/repos/CFFM14/TouGeDone/releases/{release["id"]}/assets?name={descriptor_name}'
         request(upload, json.dumps(descriptor, ensure_ascii=False).encode(), 'application/json', 'POST')
         print('已上传 ' + descriptor_name)
