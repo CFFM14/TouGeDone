@@ -67,6 +67,20 @@ def main():
         upload = f'https://uploads.github.com/repos/CFFM14/TouGeDone/releases/{release["id"]}/assets?name={quote(file.name)}'
         request(upload, file.read_bytes(), 'application/octet-stream', 'POST')
         print(f'已上传 {file.name}')
+    # Publish a small metadata attachment so clients can check without the REST API.
+    release = request(API + '/releases/' + str(release['id']))
+    descriptor_name = 'TouGeDone-update.json'
+    if descriptor_name not in {a['name'] for a in release.get('assets', [])}:
+        descriptor = {'format': 1, 'repository': 'CFFM14/TouGeDone', 'tag_name': tag,
+                      'draft': False, 'prerelease': False, 'body': release.get('body', ''),
+                      'assets': [{key: asset.get(key) for key in ('name', 'state', 'digest', 'browser_download_url')}
+                                 for asset in release['assets']]}
+        bundle_asset = next(a for a in descriptor['assets'] if a['name'].endswith('.bundle.json'))
+        if not str(bundle_asset['digest']).startswith('sha256:'):
+            raise RuntimeError('一键更新包缺少 GitHub SHA-256，未发布备用信息。')
+        upload = f'https://uploads.github.com/repos/CFFM14/TouGeDone/releases/{release["id"]}/assets?name={descriptor_name}'
+        request(upload, json.dumps(descriptor, ensure_ascii=False).encode(), 'application/json', 'POST')
+        print('已上传 ' + descriptor_name)
     if release.get('draft'):
         release = request(API + '/releases/' + str(release['id']), json.dumps({'draft': False}).encode(), method='PATCH')
     print(release['html_url'])
