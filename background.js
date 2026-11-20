@@ -1,6 +1,7 @@
 chrome.action.onClicked.addListener(async tab => {
   if (!tab.id) return;
   try {
+    await chrome.scripting.executeScript({target:{tabId:tab.id},world:'MAIN',files:['network-bridge.js']});
     await chrome.scripting.executeScript({target:{tabId:tab.id},files:['helper.js']});
     await chrome.action.setBadgeText({tabId:tab.id,text:''});
   } catch (error) {

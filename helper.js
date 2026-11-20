@@ -5,7 +5,7 @@
   const panel = document.createElement('div');
   panel.id = 'edu-helper-panel';
   panel.style.cssText = 'position:fixed;z-index:2147483647;right:20px;top:70px;width:340px;padding:16px;background:white;color:#172033;border:2px solid #1677ff;border-radius:10px;font:14px/1.6 sans-serif;box-shadow:0 4px 20px #0005';
-  panel.innerHTML = '<b>头歌逐题组合助手</b><button id="eh-close" style="float:right">关闭</button><p>① 打开左侧“记录 → 评测记录”。</p><p>② 点“选选项”，依次点击同一道多选题的全部选项文字或方框。此时不会改变答案。</p><button id="eh-pick">选选项</button> <button id="eh-clear">清空</button> <span id="eh-count">0 个</span><p>③ 开始后先提交当前答案作为基准，再逐一提交该题的其他组合。其他题保持不变。</p><label>提交间隔（秒） <input id="eh-delay" type="number" min="3" max="60" value="5" style="width:60px"></label><p><button id="eh-start">开始尝试</button> <button id="eh-stop" disabled>停止</button></p><p id="eh-status" role="status" aria-live="polite">等待设置。平台按最新提交计分，停止后请核查记录。</p>';
+  panel.innerHTML = '<b>头歌逐题组合助手</b><button id="eh-close" style="float:right">关闭</button><p>① 打开左侧“记录 → 评测记录”。</p><p>② 点“选选项”，依次点击同一道多选题的全部选项文字或方框。此时不会改变答案。</p><button id="eh-pick">选选项</button> <button id="eh-clear">清空</button> <span id="eh-count">0 个</span><p>③ 开始后先提交当前答案作为基准，再逐一提交该题的其他组合。其他题保持不变。</p><label>最小提交间隔（秒） <input id="eh-delay" type="number" min="1" max="60" value="1" style="width:60px"></label><p><button id="eh-start">开始尝试</button> <button id="eh-stop" disabled>停止</button></p><p id="eh-status" role="status" aria-live="polite">等待设置。平台按最新提交计分，停止后请核查记录。</p>';
   document.body.appendChild(panel);
   const $ = id => panel.querySelector('#eh-' + id);
   const status = text => { $('status').textContent = text; };
@@ -90,17 +90,75 @@
         if (others.some(({e, checked}) => !e.isConnected || e.checked !== checked)) throw Error('其他题的选项已变化，停止比较。');
       };
       const initial = selected.reduce((n, e, i) => n | (e.checked ? 1 << i : 0), 0);
-      const delay = Math.max(3, Math.min(60, Number($('delay').value) || 5)) * 1000;
+      const delay = Math.max(1, Math.min(60, Number($('delay').value) || 1)) * 1000;
+      let lastSubmissionAt = 0;
+      const task = location.pathname.split('/').pop();
+      let useNetwork = false;
       lock(true); stopped = false;
+      async function readNetwork() {
+        return new Promise((resolve, reject) => {
+          const id = crypto.randomUUID();
+          const cleanup = () => { clearTimeout(timer); document.removeEventListener('eh-network-result', receive); };
+          function receive(event) {
+            let data; try { data = JSON.parse(event.detail); } catch { return; }
+            if (data.kind !== 'reply' || data.id !== id) return;
+            cleanup();
+            if (data.error) reject(Error(data.error)); else resolve(data.record);
+          }
+          const timer = setTimeout(() => { cleanup(); reject(Error('记录接口连接超时')); }, 12000);
+          document.addEventListener('eh-network-result', receive);
+          document.dispatchEvent(new CustomEvent('eh-network-request', {detail:JSON.stringify({id, op:'records', task})}));
+        });
+      }
+      // A single normal tab refresh teaches the bridge the page's authenticated GET request.
+      await refreshRecords();
+      try { await readNetwork(); useNetwork = true; } catch { useNetwork = false; }
       async function submit(label) {
         check();
-        await refreshRecords();
+        if (!useNetwork) await refreshRecords();
+        const before = useNetwork ? await readNetwork() : null;
+        const previous = useNetwork ? [] : records(), old = signature(previous[0]), oldTime = previous[0]?.cells[0]?.innerText.trim() || '';
+        while (Date.now() - lastSubmissionAt < delay && !stopped) await sleep(100);
         check();
         if (stopped) throw Error('已停止，未发出本次评测。');
-        const previous = records(), old = signature(previous[0]), oldTime = previous[0]?.cells[0]?.innerText.trim() || '';
-        status(label + '，正在点击“评测”…');
-        button().click(); submitted = true;
-        if (!stopped) status(label + '：已点击“评测”，等待刷新记录…');
+        const build = {id:null, done:false, error:null};
+        const observe = event => {
+          let data; try { data = JSON.parse(event.detail); } catch { return; }
+          if (data.task !== task) return;
+          if (data.kind === 'build-start') {
+            if (build.id !== null) build.error = '检测到并发评测，无法确认结果归属';
+            else build.id = data.buildId;
+          }
+          if (data.kind === 'build-end' && data.buildId === build.id) {
+            build.done = true;
+            if (!data.ok) build.error = data.message;
+          }
+        };
+        if (useNetwork) document.addEventListener('eh-network-result', observe);
+        try {
+          status(label + '：正在提交评测（' + (useNetwork ? '接口读取结果' : '页面兼容模式') + '）…');
+          lastSubmissionAt = Date.now();
+          button().click(); submitted = true;
+          if (useNetwork) {
+            const deadline = Date.now() + 90000;
+            let interval = 300;
+            while (Date.now() < deadline) {
+              await sleep(interval); check();
+              if (build.error) throw Error(build.error);
+              if (!build.done) {
+                if (!build.id && Date.now() - lastSubmissionAt > 10000) throw Error('未检测到评测请求，请检查页面提示');
+                if (!stopped) status(label + '：评测请求处理中，尚未完成…');
+                continue;
+              }
+              const record = await readNetwork(); check();
+              const fresh = record && Number.isInteger(record.index) && record.index > (before?.index ?? 0);
+              if (fresh && record.index !== (before?.index ?? 0) + 1) throw Error('出现多条新评测，无法确认结果归属');
+              const result = fresh && typeof record.output === 'string' ? parse(record.output) : null;
+              if (result !== null) return result;
+              if (!stopped) status(label + '：提交已响应，等待本次最终记录…');
+              interval = Math.min(2000, interval * 1.5);
+            }
+          } else {
         const deadline = Date.now() + 90000;
         let stable = '', since = 0, refreshAt = Date.now() + 2000;
         // A stop request prevents future submissions but still waits for this result.
@@ -119,7 +177,12 @@
             else if (Date.now() - since >= 1500) return result;
           } else { stable = ''; since = 0; }
         }
-        throw Error('90 秒内未确认新的最终结果，请检查是否提交成功。');
+
+          }
+          throw Error('90 秒内未确认本次最终评测结果，已停止，未继续提交。');
+        } finally {
+          document.removeEventListener('eh-network-result', observe);
+        }
       }
       const baseline = await submit('提交当前答案建立基准');
       if (stopped) return status('已停止，基准不匹配 ' + baseline + ' 组。');
@@ -131,7 +194,6 @@
       let attempt = 0;
       // The platform does not create an evaluation record for an unanswered question.
       for (const mask of candidates) {
-        for (let waited = 0; waited < delay && !stopped; waited += 250) await sleep(250);
         if (stopped) break;
         check();
         for (let i = 0; i < selected.length; i++) {
