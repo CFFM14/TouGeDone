@@ -4,7 +4,7 @@
   "private": true,
   "description": "天下人苦头歌久矣：头歌 Edge 扩展",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test *.test.cjs",
     "pack": "python scripts/package.py",
     "release": "python scripts/publish.py"
   }
