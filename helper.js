@@ -1,0 +1,122 @@
+(() => {
+  if (document.getElementById('edu-helper-panel')) return;
+  if (location.hostname !== 'www.educoder.net' || !location.pathname.startsWith('/tasks/')) return alert('请进入头歌答题界面后打开助手。');
+  let choices = [], picking = false, running = false, stopped = false;
+  const panel = document.createElement('div');
+  panel.id = 'edu-helper-panel';
+  panel.style.cssText = 'position:fixed;z-index:2147483647;right:20px;top:70px;width:340px;padding:16px;background:white;color:#172033;border:2px solid #1677ff;border-radius:10px;font:14px/1.6 sans-serif;box-shadow:0 4px 20px #0005';
+  panel.innerHTML = '<b>头歌逐题组合助手</b><button id="eh-close" style="float:right">关闭</button><p>① 打开左侧“记录 → 评测记录”。</p><p>② 点“选选项”，依次点击同一道多选题的全部选项文字或方框。此时不会改变答案。</p><button id="eh-pick">选选项</button> <button id="eh-clear">清空</button> <span id="eh-count">0 个</span><p>③ 开始后先提交当前答案作为基准，再逐一提交该题的其他组合。其他题保持不变。</p><label>提交间隔（秒） <input id="eh-delay" type="number" min="3" max="60" value="5" style="width:60px"></label><p><button id="eh-start">开始尝试</button> <button id="eh-stop" disabled>停止</button></p><p id="eh-status" role="status" aria-live="polite">等待设置。平台按最新提交计分，停止后请核查记录。</p>';
+  document.body.appendChild(panel);
+  const $ = id => panel.querySelector('#eh-' + id);
+  const status = text => { $('status').textContent = text; };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const parse = text => {
+    const m = text.match(/其中有\s*(\d+)\s*组测试结果\s*不匹配/);
+    return m ? Number(m[1]) : /全部通过|所有测试(?:集)?.*通过/.test(text) ? 0 : null;
+  };
+  const records = () => {
+    const tables = [...document.querySelectorAll('table')].filter(e => e.getClientRects().length && /评测时间/.test(e.tHead?.innerText || '') && /评测结果/.test(e.tHead?.innerText || ''));
+    if (tables.length !== 1) throw Error('请打开“记录 → 评测记录”并保持打开。');
+    return [...tables[0].querySelectorAll('tbody tr.ant-table-row')];
+  };
+  const signature = row => row ? [...row.cells].slice(0, 4).map(e => e.innerText.trim()).join('|') : '';
+  const button = () => {
+    const buttons = [...document.querySelectorAll('button')].filter(e => !panel.contains(e) && e.getClientRects().length && e.innerText.trim() === '评测');
+    if (buttons.length !== 1) throw Error('无法唯一识别评测按钮。');
+    const e = buttons[0];
+    if (e.disabled || e.getAttribute('aria-disabled') === 'true' || e.classList.contains('ant-btn-loading')) throw Error('评测按钮暂不可用。');
+    return e;
+  };
+  function pick(event) {
+    if (!picking || running || panel.contains(event.target)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    const target = event.target;
+    const box = target.closest('a.flex-container, label')?.querySelector('input[type=checkbox]') || (target.matches('input[type=checkbox]') ? target : null);
+    if (!box) return status('未识别到多选框，请点击选项方框或文字。暂不支持单选题。');
+    if (!choices.includes(box)) choices.push(box);
+    $('count').textContent = choices.length + ' 个';
+    status('已选 ' + choices.length + ' 个选项，选完点击“开始尝试”。');
+  }
+  document.addEventListener('click', pick, true);
+  $('pick').onclick = () => { picking = !picking; status(picking ? '依次点击同一道多选题的全部选项。' : '已退出选择。'); };
+  $('clear').onclick = () => { choices = []; picking = false; $('count').textContent = '0 个'; status('已清空助手选择，页面答案未改变。'); };
+  $('stop').onclick = () => { stopped = true; status('正在停止；等待已发出的评测结束，之后不再提交。'); };
+  $('close').onclick = () => {
+    if (running) { stopped = true; return status('正在停止，请等待当前评测结束后关闭。'); }
+    document.removeEventListener('click', pick, true); panel.remove();
+  };
+  const lock = value => {
+    running = value;
+    for (const id of ['pick', 'clear', 'start', 'delay']) $(id).disabled = value;
+    $('stop').disabled = !value;
+  };
+  $('start').onclick = async () => {
+    if (running) return;
+    picking = false;
+    const selected = [...choices];
+    let submitted = false;
+    try {
+      if (!selected.length || selected.length > 12 || selected.some(e => !e.isConnected || e.disabled)) throw Error('请选择一道多选题的全部选项（1～12 个）。');
+      let group = selected[0].closest('a.flex-container')?.parentElement;
+      while (group && group.querySelectorAll('input[type=checkbox]').length < 2) group = group.parentElement;
+      const boxes = group ? [...group.querySelectorAll('input[type=checkbox]')] : [];
+      if (!boxes.length || boxes.length !== selected.length || boxes.some(e => !selected.includes(e))) throw Error('请完整选择同一道多选题的所有选项，不要跨题。');
+      records(); button();
+      const url = location.href;
+      const others = [...document.querySelectorAll('input[type=checkbox], input[type=radio]')].filter(e => !panel.contains(e) && !selected.includes(e)).map(e => ({e, checked:e.checked}));
+      const check = () => {
+        if (location.href !== url || selected.some(e => !e.isConnected)) throw Error('页面或题目已变化，请重新设置。');
+        if (others.some(({e, checked}) => !e.isConnected || e.checked !== checked)) throw Error('其他题的选项已变化，停止比较。');
+      };
+      const initial = selected.reduce((n, e, i) => n | (e.checked ? 1 << i : 0), 0);
+      const delay = Math.max(3, Math.min(60, Number($('delay').value) || 5)) * 1000;
+      lock(true); stopped = false;
+      async function submit(label) {
+        check();
+        const previous = records(), old = signature(previous[0]), oldTime = previous[0]?.cells[0]?.innerText.trim() || '';
+        status(label + '，等待新评测记录…');
+        button().click(); submitted = true;
+        const deadline = Date.now() + 90000;
+        let stable = '', since = 0;
+        // A stop request prevents future submissions but still waits for this result.
+        while (Date.now() < deadline) {
+          await sleep(500); check();
+          const rows = records(), top = rows[0], sig = signature(top), time = top?.cells[0]?.innerText.trim() || '';
+          const fresh = sig && sig !== old && (time !== oldTime || rows.length > previous.length);
+          const result = top?.cells[1] ? parse(top.cells[1].innerText) : null;
+          if (fresh && result !== null) {
+            if (stable !== sig) { stable = sig; since = Date.now(); }
+            else if (Date.now() - since >= 1500) return result;
+          } else { stable = ''; since = 0; }
+        }
+        throw Error('90 秒内未确认新的最终结果，请检查是否提交成功。');
+      }
+      const baseline = await submit('提交当前答案建立基准');
+      if (stopped) return status('已停止，基准不匹配 ' + baseline + ' 组。');
+      if (baseline === 0) return status('当前答案已全部通过。');
+      const total = 1 << selected.length;
+      for (let mask = 0; mask < total; mask++) {
+        if (mask === initial) continue;
+        for (let waited = 0; waited < delay && !stopped; waited += 250) await sleep(250);
+        if (stopped) break;
+        check();
+        for (let i = 0; i < selected.length; i++) {
+          if (stopped) break;
+          check();
+          if (selected[i].checked !== Boolean(mask & (1 << i))) selected[i].click();
+          await sleep(80);
+        }
+        await sleep(300);
+        if (stopped) return status('已停止；页面可能存在未提交的选项，请核查。');
+        check();
+        if (selected.some((e, i) => e.checked !== Boolean(mask & (1 << i)))) throw Error('选项状态未正确改变。');
+        const result = await submit('尝试组合 ' + (mask + 1) + ' / ' + total);
+        if (result < baseline) return status('找到改善组合！不匹配从 ' + baseline + ' 降至 ' + result + ' 组，已停止并保留答案。');
+        if (result > baseline) throw Error('不匹配数增加到 ' + result + '，请核查最新提交。');
+        if (stopped) break;
+      }
+      status(stopped ? '已停止，当前提交结果已核查。' : '所有其他组合已尝试，未发现改善。保留最后提交的组合。');
+    } catch (e) { status('停止：' + e.message + (submitted ? ' 平台按最新提交计分，请核查记录与页面选项。' : '')); }
+    finally { lock(false); }
+  };
+})();
