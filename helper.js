@@ -71,7 +71,7 @@
     #edu-helper-panel li{margin:6px 0;list-style:decimal}
   </style>
     <div id="eh-drag-handle" tabindex="0" aria-label="拖动标题移动助手，也可用方向键移动" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;background:var(--eh-accent-soft);cursor:grab;touch-action:none;user-select:none;flex-shrink:0">
-      <div style="display:flex;gap:10px;align-items:center"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex-shrink:0;border-radius:10px;background:var(--eh-accent);color:#fff"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg></span><div><b>天下人苦头歌久矣 · 2.8.2</b><div style="font-size:11px;color:var(--eh-muted)">拖动标题移动，跨关保留位置</div></div></div><button id="eh-close" aria-label="关闭助手">关闭</button>
+      <div style="display:flex;gap:10px;align-items:center"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex-shrink:0;border-radius:10px;background:var(--eh-accent);color:#fff"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg></span><div><b>天下人苦头歌久矣 · ${globalThis.chrome?.runtime?.getManifest?.().version||'开发版'}</b><div style="font-size:11px;color:var(--eh-muted)">拖动标题移动，跨关保留位置</div></div></div><button id="eh-close" aria-label="关闭助手">关闭</button>
     </div>
     <div id="eh-body" style="padding:12px 16px;overflow:auto;min-height:0">
       <label style="display:flex;align-items:center;justify-content:space-between">工作模式 <select id="eh-mode"><option value="mixed" selected>混合模式</option><option value="choice">选择题助手</option><option value="code">编程题助手</option></select></label>
@@ -103,7 +103,7 @@
       </details>
       <p style="font-size:11px;color:var(--eh-muted)">“开始”会真实提交评测；未确认通过时不会进入下一关。</p>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--eh-border);background:var(--eh-bg);flex-shrink:0"><span style="font-size:11px;color:var(--eh-muted)">位置自动记忆</span><button id="eh-ai-settings" title="配置 DeepSeek API Key"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg>设置</button></div>`;
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--eh-border);background:var(--eh-bg);flex-shrink:0"><span style="font-size:11px;color:var(--eh-muted)">位置自动记忆</span><button id="eh-updates" title="检查 GitHub 新版本">更新</button><button id="eh-ai-settings" title="配置 DeepSeek API Key"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg>设置</button></div>`;
   document.body.appendChild(panel);
   const notify = type => {
     try { globalThis.chrome?.runtime?.sendMessage({type}).catch(() => {}); } catch {}
@@ -260,6 +260,7 @@
     pendingEditors.add(cancel);
     document.dispatchEvent(new CustomEvent('eh-editor-v5-request',{detail:JSON.stringify({id,op,url:location.href,...data})}));
   });
+  $('updates').onclick=()=>notify('eh-update-options');
   $('ai-settings').onclick=()=>globalThis.chrome?.runtime?.sendMessage({type:'eh-ai-settings'});
   async function generateCode(feedback = '') {
     if(!globalThis.EhSources||!globalThis.EhSolution)throw Error('编程模块未加载，请在扩展页重新加载插件，再刷新答题页。');

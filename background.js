@@ -1,4 +1,4 @@
-importScripts('context-utils.js','solution-policy.js','ai-service.js');
+importScripts('context-utils.js','solution-policy.js','ai-service.js','update-service.js');
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(console.error);
 const supportedPage = value => {
   try { const url = new URL(value); return url.protocol === 'https:' && ['www.educoder.net','educoder.net','trustie.educoder.net'].includes(url.hostname) && url.pathname.startsWith('/tasks/'); }
@@ -54,9 +54,26 @@ chrome.tabs.onRemoved.addListener(tabId => {
 });
 
 const aiRequests = new Map();
+let updateRequest=null;
+const checkRelease=()=>{
+  if(!updateRequest)updateRequest=EhUpdate.check(chrome.runtime.getManifest().version).finally(()=>{updateRequest=null;});
+  return updateRequest;
+};
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   const fromTask = sender.tab?.id && supportedPage(sender.url);
   const fromSettings = sender.url === chrome.runtime.getURL('options.html');
+  if(message.type==='eh-update-options'&&fromTask){
+    chrome.storage.session.set({'eh-options-source':sender.tab.id,'eh-update-autocheck':true}).then(()=>chrome.runtime.openOptionsPage()).catch(console.error);return;
+  }
+  if(fromSettings&&['eh-update-check','eh-update-download'].includes(message.type)){
+    (async()=>{const result=await checkRelease();
+      if(message.type==='eh-update-download'){
+        if(result.state!=='available')throw Error('目前没有可下载的更新，请先检查版本。');
+        await chrome.tabs.create({url:result.url});return {state:'download_opened',latest:result.latest};
+      }
+      return result;
+    })().then(result=>reply({ok:true,...result}),error=>reply({ok:false,error:error.name==='TimeoutError'?'检查更新超时，请稍后重试。':'更新失败：'+error.message}));return true;
+  }
   if(message.type==='eh-ai-status'&&fromTask){
     chrome.storage.local.get('deepseekConfig').then(({deepseekConfig:config})=>reply({ok:true,configured:typeof config?.key==='string'&&!!config.key.trim()}),()=>reply({ok:false,error:'无法读取密钥配置，请重新加载扩展。'}));
     return true;
