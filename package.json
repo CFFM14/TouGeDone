@@ -1,0 +1,9 @@
+{
+  "name": "tougedone",
+  "version": "2.8.2",
+  "private": true,
+  "description": "天下人苦头歌久矣：头歌 Edge 扩展",
+  "scripts": {
+    "test": "node --test"
+  }
+}

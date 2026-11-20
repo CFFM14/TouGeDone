@@ -1,0 +1,12 @@
+node_modules/
+*.zip
+*.log
+*.local.*
+*.local/
+__pycache__/
+.env
+.env.*
+*.pem
+*.key
+*debug-profile*/
+*.crx

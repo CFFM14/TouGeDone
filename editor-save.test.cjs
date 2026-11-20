@@ -1,0 +1,27 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const doc=new EventTarget(),location={href:'https://trustie.educoder.net/tasks/test',pathname:'/tasks/test'};
+let code='old',calls=[],readonly=false,saveResult,changeDuringSave=false,readBack,readCount=0;
+doc.addEventListener('eh-network-request',event=>{const command=JSON.parse(event.detail);readCount++;doc.dispatchEvent(new CustomEvent('eh-network-result',{detail:JSON.stringify({id:command.id,kind:'reply',files:typeof readBack==='string'?[{path:command.paths[0],code:readBack,truncated:false}]:[],missing:[{path:command.paths[0],reason:'未捕获文件请求'}]})}));});
+const props={taskData:{game:{status:0},test_sets:[]},evaluateLoading:false,codeRepData:{currentPath:'src/A.java',content:'old',paths:['src/A.java']},onUpdateCode:async(evaluate,content)=>{calls.push({evaluate,content});if(changeDuringSave)props.codeRepData.currentPath='src/B.java';return saveResult===undefined?{content}:saveResult;}};
+const activeRoot={stateNode:{}},oldRoot={stateNode:activeRoot.stateNode};activeRoot.stateNode.current=activeRoot;
+const active={memoizedProps:props,return:activeRoot},stale={memoizedProps:{taskData:{game:{status:99}},evaluateLoading:false},return:oldRoot,alternate:active};
+const node={getClientRects:()=>[1],__reactFiberTest:stale};doc.querySelectorAll=()=>[node];
+const model={uri:'inmemory://model/1',getValue:()=>code,getLanguageId:()=> 'java',getFullModelRange:()=>({})};
+const editor={getModel:()=>model,getDomNode:()=>node,getRawOptions:()=>({readOnly:readonly}),hasTextFocus:()=>true,pushUndoStop:()=>{},executeEdits:(_,edits)=>{code=edits[0].text;props.codeRepData.content=code;}};
+vm.runInNewContext(fs.readFileSync('context-utils.js','utf8')+fs.readFileSync('editor-bridge.js','utf8'),{window:{monaco:{editor:{getEditors:()=>[editor]}}},document:doc,location,CustomEvent,crypto,setTimeout,clearTimeout,TextDecoder,Uint8Array,atob});
+const send=(op,data={})=>new Promise(resolve=>{const id=String(Math.random());const listener=e=>{const reply=JSON.parse(e.detail);if(reply.id!==id)return;doc.removeEventListener('eh-editor-v5-result',listener);resolve(reply);};doc.addEventListener('eh-editor-v5-result',listener);doc.dispatchEvent(new CustomEvent('eh-editor-v5-request',{detail:JSON.stringify({id,op,url:location.href,...data})}));});
+const write=next=>send('write',{path:'src/A.java',file:String(model.uri),expected:code,code:next,save:true});
+(async()=>{
+assert.equal((await send('state')).state.status,0,'must read committed React tree');
+assert.equal((await write('new')).ok,true);assert.deepEqual(calls,[{evaluate:0,content:'new'}]);
+saveResult={content:{content:'nested saved',commitID:'mock',size:12}};assert.equal((await write('nested saved')).ok,true);
+const chinese='class Student { // 成绩\n}\n';saveResult={content:{content:Buffer.from(chinese).toString('base64'),size:Buffer.byteLength(chinese)}};const readsBeforeEncoded=readCount;assert.equal((await write(chinese)).ok,true);assert.equal(readCount,readsBeforeEncoded,'encoded save receipt should match without a network fallback');
+saveResult=true;let result=await write('save not confirmed');assert.equal(result.ok,false);assert.match(result.error,/未确认/);assert.match(result.error,/未捕获文件请求/);
+readBack='read-back confirmed';assert.equal((await write(readBack)).ok,true,'receipt without source can be verified through file readback');
+saveResult={content:'different receipt',sec_key:'never-emit-this'};readBack='server confirmed\r\n';result=await write('server confirmed\n');assert.equal(result.ok,true);assert.ok(!JSON.stringify(result).includes('never-emit-this'));
+readBack='old server code';result=await write('new unsaved code');assert.equal(result.ok,false);assert.match(result.error,/服务器读回代码仍不一致/);
+saveResult={status:-1};readBack='rejected';const beforeReads=readCount;result=await write('rejected');assert.equal(result.ok,false);assert.match(result.error,/拒绝/);assert.equal(readCount,beforeReads);
+saveResult=undefined;readonly=true;const previous=code;assert.equal((await write('blocked')).ok,false);assert.equal(code,previous);readonly=false;
+changeDuringSave=true;result=await write('last');assert.equal(result.ok,false);assert.match(result.error,/变化/);
+console.log('通过：正常/嵌套保存回执、无源码回执的服务器读回确认、换行归一化、读回不一致与拒绝保存拦截、凭据不外传、只读保护和保存期间切换文件拦截。');
+})().catch(e=>{console.error(e);process.exitCode=1;});
